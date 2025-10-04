@@ -1,0 +1,74 @@
+version: "3.8"
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: siteheater_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-siteheater}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-siteheater_password}
+      POSTGRES_DB: ${POSTGRES_DB:-siteheater}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-siteheater}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - siteheater_network
+
+  # SiteHeater Application
+  app:
+    build: .
+    container_name: siteheater_app
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-siteheater}:${POSTGRES_PASSWORD:-siteheater_password}@postgres:5432/${POSTGRES_DB:-siteheater}
+      WARMER_CONCURRENCY: ${WARMER_CONCURRENCY:-5}
+      WARMER_MIN_DELAY: ${WARMER_MIN_DELAY:-0.5}
+      WARMER_MAX_DELAY: ${WARMER_MAX_DELAY:-2.0}
+      WARMER_REPEAT_COUNT: ${WARMER_REPEAT_COUNT:-2}
+      WARMER_REQUEST_TIMEOUT: ${WARMER_REQUEST_TIMEOUT:-30}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    networks:
+      - siteheater_network
+    volumes:
+      - ./app:/app/app
+    command: python -m app.main
+
+  # pgAdmin - Web GUI for PostgreSQL
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: siteheater_pgadmin
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL:-admin@admin.com}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD:-admin}
+      PGADMIN_CONFIG_SERVER_MODE: "False"
+    ports:
+      - "5050:80"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    depends_on:
+      - postgres
+    networks:
+      - siteheater_network
+
+volumes:
+  postgres_data:
+    driver: local
+  pgadmin_data:
+    driver: local
+
+networks:
+  siteheater_network:
+    driver: bridge
