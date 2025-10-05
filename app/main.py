@@ -49,6 +49,8 @@ class SiteHeaterApp:
         
         # Запуск планировщика
         try:
+            # Устанавливаем экземпляр бота в планировщик для отправки уведомлений
+            warming_scheduler.set_bot(self.bot)
             warming_scheduler.start()
             await warming_scheduler.reload_jobs()
             logger.info("✅ Scheduler started")

@@ -30,6 +30,9 @@ class Config:
     # Logging
     LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
     
+    # Notifications
+    SEND_WARMING_NOTIFICATIONS: bool = os.getenv("SEND_WARMING_NOTIFICATIONS", "true").lower() == "true"
+    
     @classmethod
     def validate(cls) -> None:
         """Валидация конфигурации"""

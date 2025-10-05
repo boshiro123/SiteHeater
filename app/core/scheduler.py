@@ -3,14 +3,18 @@
 """
 import asyncio
 import logging
-from typing import Dict, Optional
+from typing import Dict, Optional, TYPE_CHECKING
 from datetime import datetime
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 
+from app.config import config
 from app.core.db import db_manager
 from app.core.warmer import warmer
+
+if TYPE_CHECKING:
+    from aiogram import Bot
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +25,12 @@ class WarmingScheduler:
     def __init__(self):
         self.scheduler = AsyncIOScheduler()
         self.job_map: Dict[int, str] = {}  # domain_id -> apscheduler_job_id
+        self.bot: Optional['Bot'] = None
+    
+    def set_bot(self, bot: 'Bot') -> None:
+        """Установка экземпляра бота для отправки уведомлений"""
+        self.bot = bot
+        logger.info("Bot instance set for scheduler")
     
     def start(self) -> None:
         """Запуск планировщика"""
@@ -87,8 +97,49 @@ class WarmingScheduler:
             
             logger.info(f"✅ Scheduled warming completed for {domain.name}: {stats}")
             
+            # Отправляем уведомление пользователю (если включено в настройках)
+            if config.SEND_WARMING_NOTIFICATIONS and self.bot and domain.user_id:
+                await self._send_warming_notification(domain, stats)
+            
         except Exception as e:
             logger.error(f"Error in scheduled warming task for domain {domain_id}: {e}", exc_info=True)
+    
+    async def _send_warming_notification(self, domain, stats: Dict) -> None:
+        """Отправка уведомления о прогреве пользователю"""
+        try:
+            success_rate = (stats["success"] / stats["total_requests"] * 100) if stats["total_requests"] > 0 else 0
+            
+            # Определяем эмодзи в зависимости от успешности
+            if success_rate >= 90:
+                status_emoji = "✅"
+            elif success_rate >= 70:
+                status_emoji = "⚠️"
+            else:
+                status_emoji = "❌"
+            
+            message = (
+                f"{status_emoji} <b>Автопрогрев завершен</b>\n\n"
+                f"🌐 Домен: <b>{domain.name}</b>\n"
+                f"🕒 Время: {datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}\n\n"
+                f"📊 <b>Статистика:</b>\n"
+                f"• Всего запросов: <b>{stats['total_requests']}</b>\n"
+                f"• ✅ Успешно: <b>{stats['success']}</b> ({success_rate:.1f}%)\n"
+                f"• ⏱ Таймауты: <b>{stats['timeout']}</b>\n"
+                f"• ❌ Ошибки: <b>{stats['error']}</b>\n"
+                f"• ⏱ Среднее время: <b>{stats['avg_time']:.2f}s</b>\n"
+                f"• ⏱ Общее время: <b>{stats['total_time']:.2f}s</b>"
+            )
+            
+            await self.bot.send_message(
+                chat_id=domain.user_id,
+                text=message,
+                parse_mode="HTML"
+            )
+            
+            logger.info(f"📤 Notification sent to user {domain.user_id} for domain {domain.name}")
+            
+        except Exception as e:
+            logger.error(f"Error sending notification to user {domain.user_id}: {e}", exc_info=True)
     
     def add_job(self, domain_id: int, job_id: int, schedule: str) -> bool:
         """Добавление задачи в планировщик"""
