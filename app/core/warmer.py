@@ -29,12 +29,10 @@ class SiteWarmer:
         self.max_delay = max_delay or config.WARMER_MAX_DELAY
         self.repeat_count = repeat_count or config.WARMER_REPEAT_COUNT
         self.timeout = timeout or config.WARMER_REQUEST_TIMEOUT
-        
-        self.semaphore = asyncio.Semaphore(self.concurrency)
     
-    async def warm_url(self, url: str, client: httpx.AsyncClient) -> Dict[str, Any]:
+    async def warm_url(self, url: str, client: httpx.AsyncClient, semaphore: asyncio.Semaphore) -> Dict[str, Any]:
         """Прогрев одного URL"""
-        async with self.semaphore:
+        async with semaphore:
             start_time = datetime.utcnow()
             
             try:
@@ -89,6 +87,9 @@ class SiteWarmer:
         
         all_results = []
         
+        # Создаем отдельный semaphore для этого прогрева
+        semaphore = asyncio.Semaphore(self.concurrency)
+        
         async with httpx.AsyncClient(
             headers={
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
@@ -97,7 +98,7 @@ class SiteWarmer:
             for repeat in range(self.repeat_count):
                 logger.info(f"🔄 Repeat {repeat + 1}/{self.repeat_count}")
                 
-                tasks = [self.warm_url(url, client) for url in urls]
+                tasks = [self.warm_url(url, client, semaphore) for url in urls]
                 results = await asyncio.gather(*tasks)
                 
                 all_results.extend(results)

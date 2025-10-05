@@ -328,4 +328,3 @@ async def callback_confirm_delete(callback: CallbackQuery):
     except Exception as e:
         logger.error(f"Error deleting domain {domain_id}: {e}", exc_info=True)
         await callback.message.edit_text(f"❌ Ошибка: {str(e)}")
-
