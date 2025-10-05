@@ -105,7 +105,7 @@ class WarmingScheduler:
             logger.error(f"Error in scheduled warming task for domain {domain_id}: {e}", exc_info=True)
     
     async def _send_warming_notification(self, domain, stats: Dict) -> None:
-        """Отправка уведомления о прогреве пользователю"""
+        """Отправка уведомления о прогреве ВСЕМ активным пользователям"""
         try:
             success_rate = (stats["success"] / stats["total_requests"] * 100) if stats["total_requests"] > 0 else 0
             
@@ -130,16 +130,26 @@ class WarmingScheduler:
                 f"• ⏱ Общее время: <b>{stats['total_time']:.2f}s</b>"
             )
             
-            await self.bot.send_message(
-                chat_id=domain.user_id,
-                text=message,
-                parse_mode="HTML"
-            )
+            # Получаем всех активных пользователей
+            users = await db_manager.get_all_active_users()
             
-            logger.info(f"📤 Notification sent to user {domain.user_id} for domain {domain.name}")
+            # Отправляем уведомление каждому пользователю
+            sent_count = 0
+            for user in users:
+                try:
+                    await self.bot.send_message(
+                        chat_id=user.id,
+                        text=message,
+                        parse_mode="HTML"
+                    )
+                    sent_count += 1
+                except Exception as e:
+                    logger.warning(f"Failed to send notification to user {user.id}: {e}")
+            
+            logger.info(f"📤 Notification sent to {sent_count}/{len(users)} users for domain {domain.name}")
             
         except Exception as e:
-            logger.error(f"Error sending notification to user {domain.user_id}: {e}", exc_info=True)
+            logger.error(f"Error sending notifications: {e}", exc_info=True)
     
     def add_job(self, domain_id: int, job_id: int, schedule: str) -> bool:
         """Добавление задачи в планировщик"""

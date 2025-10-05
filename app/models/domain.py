@@ -63,3 +63,19 @@ class Job(Base):
     def __repr__(self) -> str:
         return f"<Job(id={self.id}, domain_id={self.domain_id}, schedule={self.schedule}, active={self.active})>"
 
+
+class User(Base):
+    """Модель пользователя бота"""
+    __tablename__ = "users"
+    
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)  # Telegram user_id
+    username: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    first_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    last_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    last_activity: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False, onupdate=datetime.utcnow)
+    
+    def __repr__(self) -> str:
+        return f"<User(id={self.id}, username={self.username})>"
+

@@ -16,6 +16,7 @@ from app.utils.logger import setup_logging
 
 # Импорт обработчиков
 from app.bot.handlers import start, add_domain, domains, help
+from app.bot.middlewares import UserRegistrationMiddleware
 
 logger = logging.getLogger(__name__)
 
@@ -82,6 +83,10 @@ class SiteHeaterApp:
     
     def setup_handlers(self):
         """Регистрация обработчиков"""
+        # Регистрируем middleware для автоматической регистрации пользователей
+        self.dp.message.middleware(UserRegistrationMiddleware())
+        self.dp.callback_query.middleware(UserRegistrationMiddleware())
+        
         self.dp.include_router(start.router)
         self.dp.include_router(help.router)
         self.dp.include_router(add_domain.router)

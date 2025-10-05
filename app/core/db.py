@@ -10,7 +10,7 @@ from sqlalchemy import select, delete
 from sqlalchemy.orm import selectinload
 
 from app.config import config
-from app.models.domain import Base, Domain, URL, Job
+from app.models.domain import Base, Domain, URL, Job, User
 
 logger = logging.getLogger(__name__)
 
@@ -204,6 +204,50 @@ class DatabaseManager:
                 job.active = False
             
             await session.commit()
+    
+    # User methods
+    async def register_user(
+        self,
+        user_id: int,
+        username: Optional[str] = None,
+        first_name: Optional[str] = None,
+        last_name: Optional[str] = None
+    ) -> User:
+        """Регистрация или обновление пользователя"""
+        async with self.async_session() as session:
+            result = await session.execute(
+                select(User).where(User.id == user_id)
+            )
+            user = result.scalar_one_or_none()
+            
+            if user:
+                # Обновляем информацию
+                user.username = username
+                user.first_name = first_name
+                user.last_name = last_name
+                user.last_activity = datetime.utcnow()
+                user.is_active = True
+            else:
+                # Создаем нового пользователя
+                user = User(
+                    id=user_id,
+                    username=username,
+                    first_name=first_name,
+                    last_name=last_name
+                )
+                session.add(user)
+            
+            await session.commit()
+            await session.refresh(user)
+            return user
+    
+    async def get_all_active_users(self) -> List[User]:
+        """Получение всех активных пользователей"""
+        async with self.async_session() as session:
+            result = await session.execute(
+                select(User).where(User.is_active == True)
+            )
+            return list(result.scalars().all())
 
 
 # Глобальный экземпляр

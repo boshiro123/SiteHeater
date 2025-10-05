@@ -26,17 +26,18 @@ router = Router()
 @router.message(Command("domains"))
 async def cmd_domains(message: Message):
     """Команда /domains - список доменов"""
-    domains = await db_manager.get_all_domains(user_id=message.from_user.id)
+    # Получаем ВСЕ домены (без фильтрации по user_id)
+    domains = await db_manager.get_all_domains(user_id=None)
     
     if not domains:
         await message.answer(
-            "📭 У вас пока нет добавленных доменов.\n\n"
+            "📭 Пока нет добавленных доменов.\n\n"
             "Используйте /add для добавления домена."
         )
         return
     
     await message.answer(
-        f"📋 <b>Ваши домены ({len(domains)}):</b>\n\n"
+        f"📋 <b>Все домены ({len(domains)}):</b>\n\n"
         f"Выберите домен для управления:",
         parse_mode="HTML",
         reply_markup=get_domains_keyboard(domains)
@@ -48,17 +49,18 @@ async def callback_back_to_domains(callback: CallbackQuery):
     """Возврат к списку доменов"""
     await callback.answer()
     
-    domains = await db_manager.get_all_domains(user_id=callback.from_user.id)
+    # Получаем ВСЕ домены (без фильтрации по user_id)
+    domains = await db_manager.get_all_domains(user_id=None)
     
     if not domains:
         await callback.message.edit_text(
-            "📭 У вас нет доменов.\n\n"
+            "📭 Нет доменов.\n\n"
             "Используйте /add для добавления."
         )
         return
     
     await callback.message.edit_text(
-        f"📋 <b>Ваши домены ({len(domains)}):</b>\n\n"
+        f"📋 <b>Все домены ({len(domains)}):</b>\n\n"
         f"Выберите домен для управления:",
         parse_mode="HTML",
         reply_markup=get_domains_keyboard(domains)
