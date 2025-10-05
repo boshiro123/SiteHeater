@@ -17,6 +17,7 @@ from app.bot.keyboards.inline import (
 from app.core.db import db_manager
 from app.core.warmer import warmer
 from app.core.scheduler import warming_scheduler
+from app.core.warming_manager import warming_manager
 
 logger = logging.getLogger(__name__)
 
@@ -108,46 +109,46 @@ async def callback_domain_info(callback: CallbackQuery):
 @router.callback_query(F.data.startswith("warm_once_"))
 async def callback_warm_once(callback: CallbackQuery):
     """Разовый прогрев домена"""
-    await callback.answer("🔥 Запускаю прогрев...")
-    
     domain_id = int(callback.data.split("_")[2])
     domain = await db_manager.get_domain_by_id(domain_id)
     
     if not domain or not domain.urls:
-        await callback.message.answer("❌ Домен не найден или нет URL.")
+        await callback.answer("❌ Домен не найден или нет URL.", show_alert=True)
         return
     
-    # Отправляем сообщение о начале прогрева
-    status_msg = await callback.message.answer(
-        f"🔥 Начинаю прогрев <b>{domain.name}</b>...\n"
-        f"Страниц: {len(domain.urls)}",
-        parse_mode="HTML"
+    # Проверяем, не идет ли уже прогрев этого домена
+    if warming_manager.is_warming(domain_id):
+        await callback.answer(
+            f"⚠️ Прогрев {domain.name} уже выполняется!",
+            show_alert=True
+        )
+        return
+    
+    # Запускаем прогрев в фоновом режиме
+    urls = [url.url for url in domain.urls]
+    started = await warming_manager.start_warming(
+        domain_id=domain_id,
+        domain_name=domain.name,
+        urls=urls,
+        user_id=callback.from_user.id,
+        bot=callback.bot
     )
     
-    try:
-        # Запускаем прогрев
-        urls = [url.url for url in domain.urls]
-        stats = await warmer.warm_site(urls)
-        
-        # Формируем отчет
-        success_rate = (stats["success"] / stats["total_requests"] * 100) if stats["total_requests"] > 0 else 0
-        
-        await status_msg.edit_text(
-            f"✅ <b>Прогрев завершен!</b>\n\n"
+    if started:
+        active_count = warming_manager.get_active_count()
+        await callback.answer("🔥 Прогрев запущен!", show_alert=False)
+        await callback.message.answer(
+            f"🚀 <b>Прогрев запущен в фоновом режиме</b>\n\n"
             f"🌐 Домен: <b>{domain.name}</b>\n"
-            f"📊 Всего запросов: <b>{stats['total_requests']}</b>\n"
-            f"✅ Успешно: <b>{stats['success']}</b> ({success_rate:.1f}%)\n"
-            f"⏱ Таймауты: <b>{stats['timeout']}</b>\n"
-            f"❌ Ошибки: <b>{stats['error']}</b>\n"
-            f"⏱ Среднее время: <b>{stats['avg_time']:.2f}s</b>\n"
-            f"⏱ Общее время: <b>{stats['total_time']:.2f}s</b>",
+            f"📊 Страниц: <b>{len(domain.urls)}</b>\n"
+            f"🔥 Активных прогревов: <b>{active_count}</b>\n\n"
+            f"Уведомление придет по завершении.",
             parse_mode="HTML"
         )
-        
-    except Exception as e:
-        logger.error(f"Error warming domain {domain.name}: {e}", exc_info=True)
-        await status_msg.edit_text(
-            f"❌ Ошибка при прогреве: {str(e)}"
+    else:
+        await callback.answer(
+            "⚠️ Не удалось запустить прогрев",
+            show_alert=True
         )
 
 

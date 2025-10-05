@@ -12,10 +12,11 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from app.config import config
 from app.core.db import db_manager
 from app.core.scheduler import warming_scheduler
+from app.core.warming_manager import warming_manager
 from app.utils.logger import setup_logging
 
 # Импорт обработчиков
-from app.bot.handlers import start, add_domain, domains, help
+from app.bot.handlers import start, add_domain, domains, help, status
 from app.bot.middlewares import UserRegistrationMiddleware
 
 logger = logging.getLogger(__name__)
@@ -65,6 +66,13 @@ class SiteHeaterApp:
         """Действия при остановке"""
         logger.info("🛑 Shutting down SiteHeater...")
         
+        # Остановка всех активных прогревов
+        try:
+            await warming_manager.stop_all()
+            logger.info("✅ All warming tasks stopped")
+        except Exception as e:
+            logger.error(f"Error stopping warming tasks: {e}")
+        
         # Остановка планировщика
         try:
             warming_scheduler.shutdown()
@@ -89,6 +97,7 @@ class SiteHeaterApp:
         
         self.dp.include_router(start.router)
         self.dp.include_router(help.router)
+        self.dp.include_router(status.router)
         self.dp.include_router(add_domain.router)
         self.dp.include_router(domains.router)
         

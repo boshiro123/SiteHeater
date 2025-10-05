@@ -22,7 +22,8 @@ async def cmd_help(message: Message):
 
 /start - Приветственное сообщение
 /add &lt;domain&gt; - Добавить новый домен
-/domains - Список ваших доменов
+/domains - Список всех доменов
+/status - Активные прогревы
 /help - Эта справка
 
 <b>Примеры использования:</b>
