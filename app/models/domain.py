@@ -4,7 +4,7 @@
 from datetime import datetime
 from typing import List, Optional
 
-from sqlalchemy import String, Integer, Boolean, DateTime, ForeignKey, Text
+from sqlalchemy import String, Integer, BigInteger, Boolean, DateTime, ForeignKey, Text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -68,7 +68,7 @@ class User(Base):
     """Модель пользователя бота"""
     __tablename__ = "users"
     
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)  # Telegram user_id
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)  # Telegram user_id (BigInteger для больших ID)
     username: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     first_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     last_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
