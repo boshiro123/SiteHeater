@@ -81,9 +81,49 @@ class SiteWarmer:
                 delay = random.uniform(self.min_delay, self.max_delay)
                 await asyncio.sleep(delay)
     
+    async def warm_chunk(
+        self,
+        urls: List[str],
+        client: httpx.AsyncClient,
+        semaphore: asyncio.Semaphore,
+        chunk_num: int,
+        total_chunks: int
+    ) -> List[Dict[str, Any]]:
+        """Прогрев одного чанка URL"""
+        logger.info(f"📦 Chunk {chunk_num}/{total_chunks}: warming {len(urls)} URLs")
+        
+        chunk_results = []
+        
+        for repeat in range(self.repeat_count):
+            tasks = [self.warm_url(url, client, semaphore) for url in urls]
+            results = await asyncio.gather(*tasks)
+            chunk_results.extend(results)
+        
+        logger.info(f"✅ Chunk {chunk_num}/{total_chunks} completed")
+        return chunk_results
+    
     async def warm_site(self, urls: List[str]) -> Dict[str, Any]:
-        """Прогрев всех URL сайта"""
-        logger.info(f"🔥 Starting warming {len(urls)} URLs with {self.repeat_count} repeat(s)")
+        """
+        Прогрев всех URL сайта с автоматическим разбиением на части
+        
+        Если URL много (> WARMER_CHUNK_SIZE), разбивает их на части
+        и прогревает параллельно для ускорения и предотвращения "остывания"
+        первых страниц.
+        """
+        chunk_size = config.WARMER_CHUNK_SIZE
+        total_urls = len(urls)
+        
+        logger.info(
+            f"🔥 Starting warming {total_urls} URLs with {self.repeat_count} repeat(s) "
+            f"(chunk size: {chunk_size})"
+        )
+        
+        # Разбиваем на чанки
+        chunks = [urls[i:i + chunk_size] for i in range(0, len(urls), chunk_size)]
+        total_chunks = len(chunks)
+        
+        if total_chunks > 1:
+            logger.info(f"📦 Split into {total_chunks} chunks for parallel warming")
         
         all_results = []
         
@@ -95,13 +135,17 @@ class SiteWarmer:
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
             }
         ) as client:
-            for repeat in range(self.repeat_count):
-                logger.info(f"🔄 Repeat {repeat + 1}/{self.repeat_count}")
-                
-                tasks = [self.warm_url(url, client, semaphore) for url in urls]
-                results = await asyncio.gather(*tasks)
-                
-                all_results.extend(results)
+            # Запускаем прогрев всех чанков параллельно
+            chunk_tasks = [
+                self.warm_chunk(chunk, client, semaphore, i + 1, total_chunks)
+                for i, chunk in enumerate(chunks)
+            ]
+            
+            chunks_results = await asyncio.gather(*chunk_tasks)
+            
+            # Объединяем результаты всех чанков
+            for chunk_results in chunks_results:
+                all_results.extend(chunk_results)
         
         # Подсчет статистики
         success_count = sum(1 for r in all_results if r["status"] == "success")

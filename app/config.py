@@ -26,6 +26,7 @@ class Config:
     WARMER_MAX_DELAY: float = float(os.getenv("WARMER_MAX_DELAY", "2.0"))
     WARMER_REPEAT_COUNT: int = int(os.getenv("WARMER_REPEAT_COUNT", "2"))
     WARMER_REQUEST_TIMEOUT: int = int(os.getenv("WARMER_REQUEST_TIMEOUT", "30"))
+    WARMER_CHUNK_SIZE: int = int(os.getenv("WARMER_CHUNK_SIZE", "400"))  # Размер части для разбиения больших доменов
     
     # Logging
     LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
