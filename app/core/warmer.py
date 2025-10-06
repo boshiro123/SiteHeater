@@ -90,16 +90,19 @@ class SiteWarmer:
         total_chunks: int
     ) -> List[Dict[str, Any]]:
         """Прогрев одного чанка URL"""
-        logger.info(f"📦 Chunk {chunk_num}/{total_chunks}: warming {len(urls)} URLs")
+        start_time = datetime.utcnow()
+        logger.info(f"📦 Chunk {chunk_num}/{total_chunks}: START warming {len(urls)} URLs ({self.repeat_count} repeats)")
         
         chunk_results = []
         
         for repeat in range(self.repeat_count):
+            logger.info(f"📦 Chunk {chunk_num}/{total_chunks}: repeat {repeat + 1}/{self.repeat_count}")
             tasks = [self.warm_url(url, client, semaphore) for url in urls]
             results = await asyncio.gather(*tasks)
             chunk_results.extend(results)
         
-        logger.info(f"✅ Chunk {chunk_num}/{total_chunks} completed")
+        elapsed = (datetime.utcnow() - start_time).total_seconds()
+        logger.info(f"✅ Chunk {chunk_num}/{total_chunks} COMPLETED in {elapsed:.1f}s")
         return chunk_results
     
     async def warm_site(self, urls: List[str]) -> Dict[str, Any]:
@@ -136,12 +139,17 @@ class SiteWarmer:
             }
         ) as client:
             # Запускаем прогрев всех чанков параллельно
+            logger.info(f"🚀 Launching {total_chunks} chunks in PARALLEL...")
+            
             chunk_tasks = [
                 self.warm_chunk(chunk, client, semaphore, i + 1, total_chunks)
                 for i, chunk in enumerate(chunks)
             ]
             
+            logger.info(f"⏳ Waiting for all {total_chunks} chunks to complete...")
             chunks_results = await asyncio.gather(*chunk_tasks)
+            
+            logger.info(f"🎉 All {total_chunks} chunks finished!")
             
             # Объединяем результаты всех чанков
             for chunk_results in chunks_results:
