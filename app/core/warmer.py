@@ -145,8 +145,10 @@ class SiteWarmer:
         
         all_results = []
         
-        # Создаем отдельный semaphore для этого прогрева
-        semaphore = asyncio.Semaphore(self.concurrency)
+        # Создаем отдельный semaphore для КАЖДОГО chunk'а
+        # Это позволит каждому chunk'у работать независимо с полной конкурентностью
+        chunk_concurrency = self.concurrency if total_chunks == 1 else max(3, self.concurrency // total_chunks)
+        logger.info(f"⚙️ Each chunk will use concurrency: {chunk_concurrency}")
         
         async with httpx.AsyncClient(
             headers={
@@ -157,8 +159,16 @@ class SiteWarmer:
             prefix = f"[{domain_name}] " if domain_name else ""
             logger.info(f"🚀 {prefix}Launching {total_chunks} chunks in PARALLEL...")
             
+            # Создаем отдельный semaphore для каждого chunk
             chunk_tasks = [
-                self.warm_chunk(chunk, client, semaphore, i + 1, total_chunks, domain_name)
+                self.warm_chunk(
+                    chunk, 
+                    client, 
+                    asyncio.Semaphore(chunk_concurrency),  # Отдельный semaphore!
+                    i + 1, 
+                    total_chunks, 
+                    domain_name
+                )
                 for i, chunk in enumerate(chunks)
             ]
             
