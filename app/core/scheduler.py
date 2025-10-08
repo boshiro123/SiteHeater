@@ -88,9 +88,9 @@ class WarmingScheduler:
                 logger.warning(f"No URLs for domain {domain_id}")
                 return
             
-            # Прогреваем
+            # Прогреваем (передаем имя домена для логирования)
             urls = [url.url for url in domain.urls]
-            stats = await warmer.warm_site(urls)
+            stats = await warmer.warm_site(urls, domain_name=domain.name)
             
             # Обновляем время последнего запуска
             await db_manager.update_job_last_run(job_id)

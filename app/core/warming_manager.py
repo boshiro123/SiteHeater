@@ -97,8 +97,8 @@ class WarmingManager:
         try:
             logger.info(f"🔥 Warming {domain_name} ({len(urls)} URLs)")
             
-            # Выполняем прогрев
-            stats = await warmer.warm_site(urls)
+            # Выполняем прогрев (передаем имя домена для логирования)
+            stats = await warmer.warm_site(urls, domain_name=domain_name)
             
             # Формируем отчет
             success_rate = (stats["success"] / stats["total_requests"] * 100) if stats["total_requests"] > 0 else 0

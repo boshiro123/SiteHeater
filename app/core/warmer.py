@@ -30,7 +30,14 @@ class SiteWarmer:
         self.repeat_count = repeat_count or config.WARMER_REPEAT_COUNT
         self.timeout = timeout or config.WARMER_REQUEST_TIMEOUT
     
-    async def warm_url(self, url: str, client: httpx.AsyncClient, semaphore: asyncio.Semaphore) -> Dict[str, Any]:
+    async def warm_url(
+        self,
+        url: str,
+        client: httpx.AsyncClient,
+        semaphore: asyncio.Semaphore,
+        domain_name: str = "",
+        chunk_num: int = 0
+    ) -> Dict[str, Any]:
         """Прогрев одного URL"""
         async with semaphore:
             start_time = datetime.utcnow()
@@ -44,8 +51,11 @@ class SiteWarmer:
                 
                 elapsed = (datetime.utcnow() - start_time).total_seconds()
                 
+                # Улучшенное логирование с указанием домена и chunk
+                prefix = f"[{domain_name}]" if domain_name else ""
+                chunk_info = f" [Chunk {chunk_num}]" if chunk_num > 0 else ""
                 logger.info(
-                    f"✅ Warmed {url} | Status: {response.status_code} | Time: {elapsed:.2f}s"
+                    f"✅{prefix}{chunk_info} Warmed {url} | Status: {response.status_code} | Time: {elapsed:.2f}s"
                 )
                 
                 return {
@@ -87,25 +97,30 @@ class SiteWarmer:
         client: httpx.AsyncClient,
         semaphore: asyncio.Semaphore,
         chunk_num: int,
-        total_chunks: int
+        total_chunks: int,
+        domain_name: str = ""
     ) -> List[Dict[str, Any]]:
         """Прогрев одного чанка URL"""
         start_time = datetime.utcnow()
-        logger.info(f"📦 Chunk {chunk_num}/{total_chunks}: START warming {len(urls)} URLs ({self.repeat_count} repeats)")
+        prefix = f"[{domain_name}] " if domain_name else ""
+        logger.info(f"📦 {prefix}Chunk {chunk_num}/{total_chunks}: START warming {len(urls)} URLs ({self.repeat_count} repeats)")
         
         chunk_results = []
         
         for repeat in range(self.repeat_count):
-            logger.info(f"📦 Chunk {chunk_num}/{total_chunks}: repeat {repeat + 1}/{self.repeat_count}")
-            tasks = [self.warm_url(url, client, semaphore) for url in urls]
+            logger.info(f"📦 {prefix}Chunk {chunk_num}/{total_chunks}: repeat {repeat + 1}/{self.repeat_count}")
+            tasks = [
+                self.warm_url(url, client, semaphore, domain_name, chunk_num)
+                for url in urls
+            ]
             results = await asyncio.gather(*tasks)
             chunk_results.extend(results)
         
         elapsed = (datetime.utcnow() - start_time).total_seconds()
-        logger.info(f"✅ Chunk {chunk_num}/{total_chunks} COMPLETED in {elapsed:.1f}s")
+        logger.info(f"✅ {prefix}Chunk {chunk_num}/{total_chunks} COMPLETED in {elapsed:.1f}s")
         return chunk_results
     
-    async def warm_site(self, urls: List[str]) -> Dict[str, Any]:
+    async def warm_site(self, urls: List[str], domain_name: str = "") -> Dict[str, Any]:
         """
         Прогрев всех URL сайта с автоматическим разбиением на части
         
@@ -139,10 +154,11 @@ class SiteWarmer:
             }
         ) as client:
             # Запускаем прогрев всех чанков параллельно
-            logger.info(f"🚀 Launching {total_chunks} chunks in PARALLEL...")
+            prefix = f"[{domain_name}] " if domain_name else ""
+            logger.info(f"🚀 {prefix}Launching {total_chunks} chunks in PARALLEL...")
             
             chunk_tasks = [
-                self.warm_chunk(chunk, client, semaphore, i + 1, total_chunks)
+                self.warm_chunk(chunk, client, semaphore, i + 1, total_chunks, domain_name)
                 for i, chunk in enumerate(chunks)
             ]
             

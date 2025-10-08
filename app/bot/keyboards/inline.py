@@ -58,6 +58,10 @@ def get_domain_actions_keyboard(domain_id: int, has_active_job: bool = False) ->
         )
     
     builder.row(
+        InlineKeyboardButton(text="🔬 Диагностика кэша", callback_data=f"diagnose_{domain_id}")
+    )
+    
+    builder.row(
         InlineKeyboardButton(text="📋 Показать URL", callback_data=f"show_urls_{domain_id}")
     )
     
