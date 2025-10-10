@@ -12,6 +12,7 @@ from apscheduler.triggers.interval import IntervalTrigger
 from app.config import config
 from app.core.db import db_manager
 from app.core.warmer import warmer
+from app.utils.url_grouper import url_grouper
 
 if TYPE_CHECKING:
     from aiogram import Bot
@@ -88,9 +89,33 @@ class WarmingScheduler:
                 logger.warning(f"No URLs for domain {domain_id}")
                 return
             
+            # Фильтруем URL по выбранной группе
+            all_urls = [url.url for url in domain.urls]
+            urls = url_grouper.filter_urls_by_group(all_urls, domain.name, domain.url_group)
+            
+            logger.info(f"Scheduled warming for {domain.name} (group {domain.url_group}): {len(urls)}/{len(all_urls)} URLs")
+            
             # Прогреваем (передаем имя домена для логирования)
-            urls = [url.url for url in domain.urls]
             stats = await warmer.warm_site(urls, domain_name=domain.name)
+            
+            # Сохраняем результаты прогрева в БД
+            try:
+                await db_manager.save_warming_result(
+                    domain_id=domain_id,
+                    started_at=stats["started_at"],
+                    completed_at=stats["completed_at"],
+                    total_requests=stats["total_requests"],
+                    successful_requests=stats["success"],
+                    failed_requests=stats["error"],
+                    timeout_requests=stats["timeout"],
+                    avg_response_time=stats["avg_time"],
+                    min_response_time=stats["min_time"],
+                    max_response_time=stats["max_time"],
+                    warming_type="scheduled"
+                )
+                logger.info(f"💾 Saved warming result to database for {domain.name}")
+            except Exception as e:
+                logger.error(f"Error saving warming result to DB: {e}", exc_info=True)
             
             # Обновляем время последнего запуска
             await db_manager.update_job_last_run(job_id)
@@ -98,7 +123,7 @@ class WarmingScheduler:
             logger.info(f"✅ Scheduled warming completed for {domain.name}: {stats}")
             
             # Отправляем уведомление пользователю (если включено в настройках)
-            if config.SEND_WARMING_NOTIFICATIONS and self.bot and domain.user_id:
+            if config.SEND_WARMING_NOTIFICATIONS and self.bot:
                 await self._send_warming_notification(domain, stats)
             
         except Exception as e:

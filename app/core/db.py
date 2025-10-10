@@ -10,7 +10,7 @@ from sqlalchemy import select, delete
 from sqlalchemy.orm import selectinload
 
 from app.config import config
-from app.models.domain import Base, Domain, URL, Job, User
+from app.models.domain import Base, Domain, URL, Job, User, WarmingHistory
 
 logger = logging.getLogger(__name__)
 
@@ -246,6 +246,76 @@ class DatabaseManager:
         async with self.async_session() as session:
             result = await session.execute(
                 select(User).where(User.is_active == True)
+            )
+            return list(result.scalars().all())
+    
+    # Warming history methods
+    async def save_warming_result(
+        self,
+        domain_id: int,
+        started_at: datetime,
+        completed_at: datetime,
+        total_requests: int,
+        successful_requests: int,
+        failed_requests: int,
+        timeout_requests: int,
+        avg_response_time: float,
+        min_response_time: Optional[float],
+        max_response_time: Optional[float],
+        warming_type: str = "manual"
+    ) -> WarmingHistory:
+        """Сохранение результата прогрева"""
+        async with self.async_session() as session:
+            history = WarmingHistory(
+                domain_id=domain_id,
+                started_at=started_at,
+                completed_at=completed_at,
+                total_requests=total_requests,
+                successful_requests=successful_requests,
+                failed_requests=failed_requests,
+                timeout_requests=timeout_requests,
+                avg_response_time=avg_response_time,
+                min_response_time=min_response_time,
+                max_response_time=max_response_time,
+                warming_type=warming_type
+            )
+            session.add(history)
+            await session.commit()
+            await session.refresh(history)
+            logger.info(f"Saved warming result for domain_id={domain_id}, avg_time={avg_response_time}s")
+            return history
+    
+    async def get_warming_history(
+        self,
+        domain_id: int,
+        limit: int = 100
+    ) -> List[WarmingHistory]:
+        """Получение истории прогревов для домена"""
+        async with self.async_session() as session:
+            result = await session.execute(
+                select(WarmingHistory)
+                .where(WarmingHistory.domain_id == domain_id)
+                .order_by(WarmingHistory.started_at.desc())
+                .limit(limit)
+            )
+            return list(result.scalars().all())
+    
+    async def get_warming_history_by_period(
+        self,
+        domain_id: int,
+        start_date: datetime,
+        end_date: datetime
+    ) -> List[WarmingHistory]:
+        """Получение истории прогревов за период"""
+        async with self.async_session() as session:
+            result = await session.execute(
+                select(WarmingHistory)
+                .where(
+                    WarmingHistory.domain_id == domain_id,
+                    WarmingHistory.started_at >= start_date,
+                    WarmingHistory.started_at <= end_date
+                )
+                .order_by(WarmingHistory.started_at.asc())
             )
             return list(result.scalars().all())
 

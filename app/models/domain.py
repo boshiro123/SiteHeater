@@ -4,7 +4,7 @@
 from datetime import datetime
 from typing import List, Optional
 
-from sqlalchemy import String, Integer, BigInteger, Boolean, DateTime, ForeignKey, Text
+from sqlalchemy import String, Integer, BigInteger, Boolean, DateTime, ForeignKey, Text, Float
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -22,10 +22,12 @@ class Domain(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     user_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    url_group: Mapped[int] = mapped_column(Integer, default=3, nullable=False)  # 1=главная, 2=основные, 3=все
     
     # Relationships
     urls: Mapped[List["URL"]] = relationship("URL", back_populates="domain", cascade="all, delete-orphan")
     jobs: Mapped[List["Job"]] = relationship("Job", back_populates="domain", cascade="all, delete-orphan")
+    warming_history: Mapped[List["WarmingHistory"]] = relationship("WarmingHistory", back_populates="domain", cascade="all, delete-orphan")
     
     def __repr__(self) -> str:
         return f"<Domain(id={self.id}, name={self.name})>"
@@ -78,4 +80,36 @@ class User(Base):
     
     def __repr__(self) -> str:
         return f"<User(id={self.id}, username={self.username})>"
+
+
+class WarmingHistory(Base):
+    """Модель истории прогревов для статистики"""
+    __tablename__ = "warming_history"
+    
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    domain_id: Mapped[int] = mapped_column(Integer, ForeignKey("domains.id", ondelete="CASCADE"), nullable=False, index=True)
+    
+    # Временные метки
+    started_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, index=True)
+    completed_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    
+    # Статистика запросов
+    total_requests: Mapped[int] = mapped_column(Integer, nullable=False)
+    successful_requests: Mapped[int] = mapped_column(Integer, nullable=False)
+    failed_requests: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    timeout_requests: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    
+    # Время ответа (в секундах)
+    avg_response_time: Mapped[float] = mapped_column(Float, nullable=False)
+    min_response_time: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    max_response_time: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    
+    # Тип прогрева: "manual" (разовый) или "scheduled" (автоматический)
+    warming_type: Mapped[str] = mapped_column(String(50), default="manual", nullable=False)
+    
+    # Relationships
+    domain: Mapped["Domain"] = relationship("Domain", back_populates="warming_history")
+    
+    def __repr__(self) -> str:
+        return f"<WarmingHistory(id={self.id}, domain_id={self.domain_id}, avg_time={self.avg_response_time}s)>"
 

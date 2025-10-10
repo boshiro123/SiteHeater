@@ -62,6 +62,10 @@ def get_domain_actions_keyboard(domain_id: int, has_active_job: bool = False) ->
     )
     
     builder.row(
+        InlineKeyboardButton(text="📊 Статистика", callback_data=f"stats_{domain_id}")
+    )
+    
+    builder.row(
         InlineKeyboardButton(text="📋 Показать URL", callback_data=f"show_urls_{domain_id}")
     )
     
@@ -111,6 +115,75 @@ def get_delete_confirm_keyboard(domain_id: int) -> InlineKeyboardMarkup:
     builder.row(
         InlineKeyboardButton(text="✅ Да, удалить", callback_data=f"confirm_delete_{domain_id}"),
         InlineKeyboardButton(text="❌ Отмена", callback_data=f"domain_{domain_id}"),
+    )
+    
+    return builder.as_markup()
+
+
+def get_stats_period_keyboard(domain_id: int) -> InlineKeyboardMarkup:
+    """Клавиатура выбора периода статистики"""
+    builder = InlineKeyboardBuilder()
+    
+    periods = [
+        ("📅 Последние 24 часа", "24h"),
+        ("📅 Последние 7 дней", "7d"),
+        ("📅 Последние 30 дней", "30d"),
+        ("📅 Вся история", "all"),
+    ]
+    
+    for text, period in periods:
+        builder.row(
+            InlineKeyboardButton(
+                text=text,
+                callback_data=f"show_stats_{domain_id}_{period}"
+            )
+        )
+    
+    builder.row(
+        InlineKeyboardButton(text="« Назад", callback_data=f"domain_{domain_id}")
+    )
+    
+    return builder.as_markup()
+
+
+def get_url_group_keyboard() -> InlineKeyboardMarkup:
+    """Клавиатура выбора группы URL при добавлении домена"""
+    builder = InlineKeyboardBuilder()
+    
+    groups = [
+        ("🏠 Группа 1: Только главная", "group_1"),
+        ("📄 Группа 2: Основные страницы", "group_2"),
+        ("🌐 Группа 3: Все страницы", "group_3"),
+    ]
+    
+    for text, callback in groups:
+        builder.row(
+            InlineKeyboardButton(text=text, callback_data=callback)
+        )
+    
+    return builder.as_markup()
+
+
+def get_diagnostic_mode_keyboard(domain_id: int) -> InlineKeyboardMarkup:
+    """Клавиатура выбора режима диагностики"""
+    builder = InlineKeyboardBuilder()
+    
+    modes = [
+        ("☀️ Только дневной тест (~15 мин)", "day"),
+        ("🌙 Только ночной тест (~15 мин)", "night"),
+        ("☀️🌙 Оба теста (~30 мин)", "both"),
+    ]
+    
+    for text, mode in modes:
+        builder.row(
+            InlineKeyboardButton(
+                text=text,
+                callback_data=f"diagnose_mode_{domain_id}_{mode}"
+            )
+        )
+    
+    builder.row(
+        InlineKeyboardButton(text="« Назад", callback_data=f"domain_{domain_id}")
     )
     
     return builder.as_markup()

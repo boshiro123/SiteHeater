@@ -13,11 +13,16 @@ from app.bot.keyboards.inline import (
     get_domain_actions_keyboard,
     get_schedule_keyboard,
     get_delete_confirm_keyboard,
+    get_stats_period_keyboard,
 )
 from app.core.db import db_manager
 from app.core.warmer import warmer
 from app.core.scheduler import warming_scheduler
 from app.core.warming_manager import warming_manager
+from app.utils.graph import graph_generator
+from app.utils.url_grouper import url_grouper
+from datetime import datetime, timedelta
+from aiogram.types import BufferedInputFile
 
 logger = logging.getLogger(__name__)
 
@@ -124,8 +129,13 @@ async def callback_warm_once(callback: CallbackQuery):
         )
         return
     
+    # Фильтруем URL по выбранной группе
+    all_urls = [url.url for url in domain.urls]
+    urls = url_grouper.filter_urls_by_group(all_urls, domain.name, domain.url_group)
+    
+    logger.info(f"Warming domain {domain.name} (group {domain.url_group}): {len(urls)}/{len(all_urls)} URLs")
+    
     # Запускаем прогрев в фоновом режиме
-    urls = [url.url for url in domain.urls]
     started = await warming_manager.start_warming(
         domain_id=domain_id,
         domain_name=domain.name,
@@ -328,3 +338,118 @@ async def callback_confirm_delete(callback: CallbackQuery):
     except Exception as e:
         logger.error(f"Error deleting domain {domain_id}: {e}", exc_info=True)
         await callback.message.edit_text(f"❌ Ошибка: {str(e)}")
+
+
+@router.callback_query(F.data.startswith("stats_"))
+async def callback_stats(callback: CallbackQuery):
+    """Показать выбор периода статистики"""
+    domain_id = int(callback.data.split("_")[1])
+    domain = await db_manager.get_domain_by_id(domain_id)
+    
+    if not domain:
+        await callback.answer("❌ Домен не найден", show_alert=True)
+        return
+    
+    await callback.message.edit_text(
+        f"📊 <b>Статистика для {domain.name}</b>\n\n"
+        f"Выберите период:",
+        parse_mode="HTML",
+        reply_markup=get_stats_period_keyboard(domain_id)
+    )
+
+
+@router.callback_query(F.data.startswith("show_stats_"))
+async def callback_show_stats(callback: CallbackQuery):
+    """Показать график статистики"""
+    await callback.answer("📊 Генерирую график...")
+    
+    parts = callback.data.split("_")
+    domain_id = int(parts[2])
+    period = parts[3]
+    
+    domain = await db_manager.get_domain_by_id(domain_id)
+    
+    if not domain:
+        await callback.answer("❌ Домен не найден", show_alert=True)
+        return
+    
+    try:
+        # Определяем период
+        if period == "24h":
+            start_date = datetime.utcnow() - timedelta(hours=24)
+            period_name = "за последние 24 часа"
+        elif period == "7d":
+            start_date = datetime.utcnow() - timedelta(days=7)
+            period_name = "за последние 7 дней"
+        elif period == "30d":
+            start_date = datetime.utcnow() - timedelta(days=30)
+            period_name = "за последние 30 дней"
+        else:  # all
+            start_date = datetime.utcnow() - timedelta(days=365)  # год назад
+            period_name = "за всю историю"
+        
+        # Получаем историю прогревов
+        history = await db_manager.get_warming_history_by_period(
+            domain_id=domain_id,
+            start_date=start_date,
+            end_date=datetime.utcnow()
+        )
+        
+        if not history:
+            await callback.message.edit_text(
+                f"📊 <b>Статистика для {domain.name}</b>\n\n"
+                f"❌ Нет данных {period_name}.\n\n"
+                f"Выполните хотя бы один прогрев, чтобы увидеть статистику.",
+                parse_mode="HTML",
+                reply_markup=get_stats_period_keyboard(domain_id)
+            )
+            return
+        
+        # Генерируем график
+        graph_buf = graph_generator.generate_combined_graph(history, domain.name)
+        
+        if not graph_buf:
+            await callback.message.edit_text(
+                f"❌ Ошибка генерации графика.\n\n"
+                f"Попробуйте позже.",
+                reply_markup=get_stats_period_keyboard(domain_id)
+            )
+            return
+        
+        # Формируем текстовую статистику
+        avg_time = sum(h.avg_response_time for h in history) / len(history)
+        avg_success_rate = sum(
+            (h.successful_requests / h.total_requests * 100) if h.total_requests > 0 else 0
+            for h in history
+        ) / len(history)
+        
+        stats_text = (
+            f"📊 <b>Статистика для {domain.name}</b>\n"
+            f"{period_name}\n\n"
+            f"📈 <b>Показатели:</b>\n"
+            f"• Всего измерений: <b>{len(history)}</b>\n"
+            f"• Средняя скорость: <b>{avg_time:.2f}s</b>\n"
+            f"• Средняя успешность: <b>{avg_success_rate:.1f}%</b>\n\n"
+            f"📊 График прикреплен ниже"
+        )
+        
+        # Удаляем старое сообщение
+        await callback.message.delete()
+        
+        # Отправляем новое сообщение с графиком
+        photo = BufferedInputFile(graph_buf.read(), filename=f"stats_{domain.name}_{period}.png")
+        await callback.message.answer_photo(
+            photo=photo,
+            caption=stats_text,
+            parse_mode="HTML",
+            reply_markup=get_stats_period_keyboard(domain_id)
+        )
+        
+        logger.info(f"Sent statistics graph for {domain.name} (period: {period})")
+        
+    except Exception as e:
+        logger.error(f"Error showing statistics for domain {domain_id}: {e}", exc_info=True)
+        await callback.message.edit_text(
+            f"❌ Ошибка при получении статистики: {str(e)}",
+            reply_markup=get_stats_period_keyboard(domain_id)
+        )

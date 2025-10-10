@@ -128,6 +128,9 @@ class SiteWarmer:
         и прогревает параллельно для ускорения и предотвращения "остывания"
         первых страниц.
         """
+        # Засекаем время начала
+        started_at = datetime.utcnow()
+        
         chunk_size = config.WARMER_CHUNK_SIZE
         total_urls = len(urls)
         
@@ -181,6 +184,9 @@ class SiteWarmer:
             for chunk_results in chunks_results:
                 all_results.extend(chunk_results)
         
+        # Засекаем время окончания
+        completed_at = datetime.utcnow()
+        
         # Подсчет статистики
         success_count = sum(1 for r in all_results if r["status"] == "success")
         timeout_count = sum(1 for r in all_results if r["status"] == "timeout")
@@ -189,13 +195,22 @@ class SiteWarmer:
         total_time = sum(r["elapsed"] for r in all_results)
         avg_time = total_time / len(all_results) if all_results else 0
         
+        # Время ответа только успешных запросов
+        response_times = [r["elapsed"] for r in all_results if r["status"] == "success"]
+        min_time = min(response_times) if response_times else None
+        max_time = max(response_times) if response_times else None
+        
         stats = {
+            "started_at": started_at,
+            "completed_at": completed_at,
             "total_requests": len(all_results),
             "success": success_count,
             "timeout": timeout_count,
             "error": error_count,
             "total_time": round(total_time, 2),
             "avg_time": round(avg_time, 2),
+            "min_time": round(min_time, 2) if min_time else None,
+            "max_time": round(max_time, 2) if max_time else None,
         }
         
         logger.info(

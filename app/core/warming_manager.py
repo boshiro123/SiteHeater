@@ -100,6 +100,25 @@ class WarmingManager:
             # Выполняем прогрев (передаем имя домена для логирования)
             stats = await warmer.warm_site(urls, domain_name=domain_name)
             
+            # Сохраняем результаты прогрева в БД
+            try:
+                await db_manager.save_warming_result(
+                    domain_id=domain_id,
+                    started_at=stats["started_at"],
+                    completed_at=stats["completed_at"],
+                    total_requests=stats["total_requests"],
+                    successful_requests=stats["success"],
+                    failed_requests=stats["error"],
+                    timeout_requests=stats["timeout"],
+                    avg_response_time=stats["avg_time"],
+                    min_response_time=stats["min_time"],
+                    max_response_time=stats["max_time"],
+                    warming_type="manual"
+                )
+                logger.info(f"💾 Saved warming result to database for {domain_name}")
+            except Exception as e:
+                logger.error(f"Error saving warming result to DB: {e}", exc_info=True)
+            
             # Формируем отчет
             success_rate = (stats["success"] / stats["total_requests"] * 100) if stats["total_requests"] > 0 else 0
             
