@@ -80,7 +80,7 @@ def get_domain_actions_keyboard(domain_id: int, has_active_job: bool = False) ->
     return builder.as_markup()
 
 
-def get_schedule_keyboard(domain_id: int) -> InlineKeyboardMarkup:
+def get_schedule_keyboard(domain_id: int, group: int = 3) -> InlineKeyboardMarkup:
     """Клавиатура выбора частоты прогрева"""
     builder = InlineKeyboardBuilder()
     
@@ -97,7 +97,7 @@ def get_schedule_keyboard(domain_id: int) -> InlineKeyboardMarkup:
         builder.row(
             InlineKeyboardButton(
                 text=text,
-                callback_data=f"set_schedule_{domain_id}_{schedule}"
+                callback_data=f"set_schedule_{domain_id}_{group}_{schedule}"
             )
         )
     
@@ -179,6 +179,37 @@ def get_diagnostic_mode_keyboard(domain_id: int) -> InlineKeyboardMarkup:
             InlineKeyboardButton(
                 text=text,
                 callback_data=f"diagnose_mode_{domain_id}_{mode}"
+            )
+        )
+    
+    builder.row(
+        InlineKeyboardButton(text="« Назад", callback_data=f"domain_{domain_id}")
+    )
+    
+    return builder.as_markup()
+
+
+def get_warming_group_keyboard(domain_id: int, action: str = "warm") -> InlineKeyboardMarkup:
+    """
+    Клавиатура выбора группы URL для прогрева
+    
+    Args:
+        domain_id: ID домена
+        action: "warm" для разового прогрева, "schedule" для настройки расписания
+    """
+    builder = InlineKeyboardBuilder()
+    
+    groups = [
+        ("🏠 Группа 1: Только главная", "1"),
+        ("📄 Группа 2: Основные страницы", "2"),
+        ("🌐 Группа 3: Все страницы", "3"),
+    ]
+    
+    for text, group in groups:
+        builder.row(
+            InlineKeyboardButton(
+                text=text,
+                callback_data=f"{action}_group_{domain_id}_{group}"
             )
         )
     

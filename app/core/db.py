@@ -147,7 +147,8 @@ class DatabaseManager:
         self,
         domain_id: int,
         schedule: Optional[str] = None,
-        active: bool = True
+        active: bool = True,
+        active_url_group: int = 3
     ) -> Job:
         """Создание задачи"""
         async with self.async_session() as session:
@@ -164,7 +165,7 @@ class DatabaseManager:
                 old_job.active = False
             
             # Создаем новую задачу
-            job = Job(domain_id=domain_id, schedule=schedule, active=active)
+            job = Job(domain_id=domain_id, schedule=schedule, active=active, active_url_group=active_url_group)
             session.add(job)
             await session.commit()
             await session.refresh(job)

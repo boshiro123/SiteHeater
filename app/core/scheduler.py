@@ -89,11 +89,18 @@ class WarmingScheduler:
                 logger.warning(f"No URLs for domain {domain_id}")
                 return
             
-            # Фильтруем URL по выбранной группе
-            all_urls = [url.url for url in domain.urls]
-            urls = url_grouper.filter_urls_by_group(all_urls, domain.name, domain.url_group)
+            # Получаем Job для определения группы
+            result = await db_manager.get_active_jobs()
+            current_job = next((j for j in result if j.id == job_id), None)
             
-            logger.info(f"Scheduled warming for {domain.name} (group {domain.url_group}): {len(urls)}/{len(all_urls)} URLs")
+            # Используем группу из Job (для автопрогрева)
+            active_group = current_job.active_url_group if current_job else 3
+            
+            # Фильтруем URL по группе из Job
+            all_urls = [url.url for url in domain.urls]
+            urls = url_grouper.filter_urls_by_group(all_urls, domain.name, active_group)
+            
+            logger.info(f"Scheduled warming for {domain.name} (group {active_group}): {len(urls)}/{len(all_urls)} URLs")
             
             # Прогреваем (передаем имя домена для логирования)
             stats = await warmer.warm_site(urls, domain_name=domain.name)

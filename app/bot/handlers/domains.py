@@ -14,6 +14,7 @@ from app.bot.keyboards.inline import (
     get_schedule_keyboard,
     get_delete_confirm_keyboard,
     get_stats_period_keyboard,
+    get_warming_group_keyboard,
 )
 from app.core.db import db_manager
 from app.core.warmer import warmer
@@ -113,7 +114,9 @@ async def callback_domain_info(callback: CallbackQuery):
 
 @router.callback_query(F.data.startswith("warm_once_"))
 async def callback_warm_once(callback: CallbackQuery):
-    """Разовый прогрев домена"""
+    """Показать выбор группы для разового прогрева"""
+    await callback.answer()
+    
     domain_id = int(callback.data.split("_")[2])
     domain = await db_manager.get_domain_by_id(domain_id)
     
@@ -129,11 +132,42 @@ async def callback_warm_once(callback: CallbackQuery):
         )
         return
     
+    # Получаем статистику по группам
+    all_urls = [url.url for url in domain.urls]
+    stats = url_grouper.get_group_stats(all_urls, domain.name)
+    
+    await callback.message.edit_text(
+        f"🔥 <b>Разовый прогрев</b>\n\n"
+        f"🌐 Домен: <b>{domain.name}</b>\n\n"
+        f"Выберите группу URL:\n"
+        f"🏠 Группа 1: <b>{stats[1]}</b> страниц (только главная)\n"
+        f"📄 Группа 2: <b>{stats[2]}</b> страниц (основные)\n"
+        f"🌐 Группа 3: <b>{stats[3]}</b> страниц (все)",
+        parse_mode="HTML",
+        reply_markup=get_warming_group_keyboard(domain_id, action="warm")
+    )
+
+
+@router.callback_query(F.data.startswith("warm_group_"))
+async def callback_warm_group(callback: CallbackQuery):
+    """Запуск разового прогрева с выбранной группой"""
+    await callback.answer("🔥 Запускаю прогрев...")
+    
+    parts = callback.data.split("_")
+    domain_id = int(parts[2])
+    group = int(parts[3])
+    
+    domain = await db_manager.get_domain_by_id(domain_id)
+    
+    if not domain or not domain.urls:
+        await callback.message.edit_text("❌ Домен не найден или нет URL.")
+        return
+    
     # Фильтруем URL по выбранной группе
     all_urls = [url.url for url in domain.urls]
-    urls = url_grouper.filter_urls_by_group(all_urls, domain.name, domain.url_group)
+    urls = url_grouper.filter_urls_by_group(all_urls, domain.name, group)
     
-    logger.info(f"Warming domain {domain.name} (group {domain.url_group}): {len(urls)}/{len(all_urls)} URLs")
+    logger.info(f"Warming domain {domain.name} (group {group}): {len(urls)}/{len(all_urls)} URLs")
     
     # Запускаем прогрев в фоновом режиме
     started = await warming_manager.start_warming(
@@ -164,7 +198,7 @@ async def callback_warm_once(callback: CallbackQuery):
 
 @router.callback_query(F.data.startswith("schedule_"))
 async def callback_schedule(callback: CallbackQuery):
-    """Настройка расписания"""
+    """Показать выбор группы для настройки расписания"""
     await callback.answer()
     
     domain_id = int(callback.data.split("_")[1])
@@ -174,11 +208,47 @@ async def callback_schedule(callback: CallbackQuery):
         await callback.message.edit_text("❌ Домен не найден.")
         return
     
+    # Получаем статистику по группам
+    all_urls = [url.url for url in domain.urls]
+    stats = url_grouper.get_group_stats(all_urls, domain.name)
+    
+    await callback.message.edit_text(
+        f"⏰ <b>Настройка расписания</b>\n\n"
+        f"🌐 Домен: <b>{domain.name}</b>\n\n"
+        f"Сначала выберите группу URL:\n"
+        f"🏠 Группа 1: <b>{stats[1]}</b> страниц (только главная)\n"
+        f"📄 Группа 2: <b>{stats[2]}</b> страниц (основные)\n"
+        f"🌐 Группа 3: <b>{stats[3]}</b> страниц (все)",
+        parse_mode="HTML",
+        reply_markup=get_warming_group_keyboard(domain_id, action="schedule")
+    )
+
+
+@router.callback_query(F.data.startswith("schedule_group_"))
+async def callback_schedule_group(callback: CallbackQuery):
+    """Выбор частоты после выбора группы"""
+    await callback.answer()
+    
+    parts = callback.data.split("_")
+    domain_id = int(parts[2])
+    group = int(parts[3])
+    
+    domain = await db_manager.get_domain_by_id(domain_id)
+    
+    if not domain:
+        await callback.message.edit_text("❌ Домен не найден.")
+        return
+    
+    group_desc = url_grouper.get_group_description(group)
+    
+    # Временно сохраняем выбранную группу в callback_data
+    # Изменяем get_schedule_keyboard чтобы передавать группу
     await callback.message.edit_text(
         f"⏰ <b>Настройка расписания для {domain.name}</b>\n\n"
+        f"📊 Группа: {group_desc}\n\n"
         f"Выберите частоту прогрева:",
         parse_mode="HTML",
-        reply_markup=get_schedule_keyboard(domain_id)
+        reply_markup=get_schedule_keyboard(domain_id, group)
     )
 
 
@@ -189,7 +259,8 @@ async def callback_set_schedule(callback: CallbackQuery):
     
     parts = callback.data.split("_")
     domain_id = int(parts[2])
-    schedule = parts[3]
+    group = int(parts[3])
+    schedule = parts[4]
     
     domain = await db_manager.get_domain_by_id(domain_id)
     
@@ -198,16 +269,19 @@ async def callback_set_schedule(callback: CallbackQuery):
         return
     
     try:
-        # Создаем задачу в базе
-        job = await db_manager.create_job(domain_id, schedule, active=True)
+        # Создаем задачу в базе с выбранной группой
+        job = await db_manager.create_job(domain_id, schedule, active=True, active_url_group=group)
         
         # Добавляем в планировщик
         success = warming_scheduler.add_job(domain_id, job.id, schedule)
         
         if success:
+            group_desc = url_grouper.get_group_description(group)
+            
             await callback.message.edit_text(
                 f"✅ <b>Расписание установлено!</b>\n\n"
                 f"🌐 Домен: <b>{domain.name}</b>\n"
+                f"📊 Группа: {group_desc}\n"
                 f"⏰ Частота: <b>{schedule}</b>\n\n"
                 f"Прогрев будет выполняться автоматически.",
                 parse_mode="HTML",
