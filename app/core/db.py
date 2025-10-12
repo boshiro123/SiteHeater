@@ -400,6 +400,16 @@ class DatabaseManager:
             
             return domain
     
+    async def get_domains(self) -> List[Domain]:
+        """Получение всех доменов"""
+        async with self.async_session() as session:
+            result = await session.execute(
+                select(Domain)
+                .options(selectinload(Domain.urls), selectinload(Domain.jobs))
+                .order_by(Domain.created_at.desc())
+            )
+            return list(result.scalars().all())
+    
     async def get_domains_by_client(self, client_id: int) -> List[Domain]:
         """Получение доменов клиента"""
         async with self.async_session() as session:

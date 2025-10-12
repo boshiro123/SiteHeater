@@ -10,7 +10,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import Message, CallbackQuery
 
 from app.bot.states import AddDomainStates
-from app.bot.keyboards.inline import get_confirm_urls_keyboard
+from app.bot.keyboards.inline import get_confirm_urls_keyboard, get_select_client_keyboard
 from app.core.db import db_manager
 from app.utils.sitemap import sitemap_parser
 
@@ -122,13 +122,39 @@ async def callback_confirm_urls(callback: CallbackQuery, state: FSMContext):
         await state.clear()
         return
     
+    # Проверяем роль пользователя
+    user = await db_manager.register_user(
+        user_id=callback.from_user.id,
+        username=callback.from_user.username,
+        first_name=callback.from_user.first_name,
+        last_name=callback.from_user.last_name
+    )
+    
+    # Если админ - предлагаем выбрать клиента
+    if user.role == "admin":
+        clients = await db_manager.get_all_clients()
+        
+        await callback.message.edit_text(
+            f"✅ Найдено <b>{len(urls)}</b> страниц для <b>{domain}</b>\n\n"
+            f"Выберите клиента для привязки домена:",
+            parse_mode="HTML",
+            reply_markup=get_select_client_keyboard(clients)
+        )
+        
+        await state.set_state(AddDomainStates.waiting_for_client_selection)
+        return
+    
+    # Если клиент - создаем домен сразу и привязываем к нему
     try:
         # Сохраняем в базу
-        await db_manager.create_domain(
+        new_domain = await db_manager.create_domain(
             name=domain,
             user_id=callback.from_user.id,
             urls=urls
         )
+        
+        # Привязываем к самому себе
+        await db_manager.assign_domain_to_client(new_domain.id, callback.from_user.id)
         
         await callback.message.edit_text(
             f"✅ Домен <b>{domain}</b> успешно добавлен!\n\n"
@@ -213,13 +239,42 @@ async def process_custom_urls(message: Message, state: FSMContext):
         await state.clear()
         return
     
+    # Сохраняем URL в состояние
+    await state.update_data(urls=valid_urls)
+    
+    # Проверяем роль пользователя
+    user = await db_manager.register_user(
+        user_id=message.from_user.id,
+        username=message.from_user.username,
+        first_name=message.from_user.first_name,
+        last_name=message.from_user.last_name
+    )
+    
+    # Если админ - предлагаем выбрать клиента
+    if user.role == "admin":
+        clients = await db_manager.get_all_clients()
+        
+        await message.answer(
+            f"✅ Найдено <b>{len(valid_urls)}</b> страниц для <b>{domain}</b>\n\n"
+            f"Выберите клиента для привязки домена:",
+            parse_mode="HTML",
+            reply_markup=get_select_client_keyboard(clients)
+        )
+        
+        await state.set_state(AddDomainStates.waiting_for_client_selection)
+        return
+    
+    # Если клиент - создаем домен сразу и привязываем к нему
     try:
         # Сохраняем в базу
-        await db_manager.create_domain(
+        new_domain = await db_manager.create_domain(
             name=domain,
             user_id=message.from_user.id,
             urls=valid_urls
         )
+        
+        # Привязываем к самому себе
+        await db_manager.assign_domain_to_client(new_domain.id, message.from_user.id)
         
         await message.answer(
             f"✅ Домен <b>{domain}</b> успешно добавлен!\n\n"
@@ -231,6 +286,60 @@ async def process_custom_urls(message: Message, state: FSMContext):
     except Exception as e:
         logger.error(f"Error saving domain {domain}: {e}", exc_info=True)
         await message.answer(
+            f"❌ Ошибка при сохранении домена: {str(e)}"
+        )
+    
+    await state.clear()
+
+
+@router.callback_query(F.data.startswith("select_client_"), AddDomainStates.waiting_for_client_selection)
+async def callback_select_client(callback: CallbackQuery, state: FSMContext):
+    """Обработка выбора клиента для нового домена"""
+    await callback.answer()
+    
+    data = await state.get_data()
+    domain = data.get("domain")
+    urls = data.get("urls", [])
+    
+    if not domain or not urls:
+        await callback.message.edit_text("❌ Ошибка: данные не найдены.")
+        await state.clear()
+        return
+    
+    # Получаем ID клиента из callback data
+    client_id = None
+    if callback.data != "select_client_none":
+        client_id = int(callback.data.split("_")[2])
+    
+    try:
+        # Создаем домен
+        new_domain = await db_manager.create_domain(
+            name=domain,
+            user_id=callback.from_user.id,
+            urls=urls
+        )
+        
+        # Если выбран клиент - привязываем
+        if client_id:
+            await db_manager.assign_domain_to_client(new_domain.id, client_id)
+            user = await db_manager.register_user(client_id, None, None, None)
+            client_info = f"👤 Клиент: @{user.username or user.phone or f'ID:{user.id}'}"
+        else:
+            client_info = "📌 Домен без клиента (админский)"
+        
+        await callback.message.edit_text(
+            f"✅ Домен <b>{domain}</b> успешно добавлен!\n\n"
+            f"Сохранено <b>{len(urls)}</b> страниц.\n"
+            f"{client_info}\n\n"
+            f"Используйте /domains для управления.",
+            parse_mode="HTML"
+        )
+        
+        logger.info(f"Domain {domain} created by admin {callback.from_user.id} for client {client_id}")
+        
+    except Exception as e:
+        logger.error(f"Error saving domain {domain}: {e}", exc_info=True)
+        await callback.message.edit_text(
             f"❌ Ошибка при сохранении домена: {str(e)}"
         )
     

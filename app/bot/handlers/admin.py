@@ -195,9 +195,97 @@ async def process_client_identifier(message: Message, state: FSMContext):
 
 @router.callback_query(F.data.startswith("assign_domain_"))
 async def callback_assign_domain(callback: CallbackQuery):
-    """Привязка домена к клиенту"""
-    await callback.answer("Функция в разработке")
-    # TODO: Реализовать выбор домена для привязки к клиенту
+    """Привязка домена к клиенту - показываем список доменов"""
+    await callback.answer()
+    
+    client_id = int(callback.data.split("_")[2])
+    
+    # Получаем все домены
+    all_domains = await db_manager.get_domains()
+    
+    if not all_domains:
+        await callback.message.edit_text(
+            "📋 <b>Нет доступных доменов</b>\n\n"
+            "Сначала добавьте домены через /add",
+            parse_mode="HTML",
+            reply_markup=get_back_keyboard()
+        )
+        return
+    
+    # Получаем уже привязанные домены клиента
+    client_domains = await db_manager.get_domains_by_client(client_id)
+    client_domain_ids = [d.id for d in client_domains]
+    
+    # Фильтруем домены: показываем только те, что еще не привязаны к этому клиенту
+    available_domains = [d for d in all_domains if d.id not in client_domain_ids]
+    
+    if not available_domains:
+        await callback.message.edit_text(
+            "📋 <b>Нет доступных доменов для привязки</b>\n\n"
+            "Все домены уже привязаны к этому клиенту.",
+            parse_mode="HTML",
+            reply_markup=get_back_keyboard()
+        )
+        return
+    
+    # Создаем клавиатуру с доступными доменами
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+    from aiogram.types import InlineKeyboardButton
+    
+    builder = InlineKeyboardBuilder()
+    for domain in available_domains:
+        builder.row(
+            InlineKeyboardButton(
+                text=f"🌐 {domain.name} ({len(domain.urls)} URL)",
+                callback_data=f"link_domain_{client_id}_{domain.id}"
+            )
+        )
+    
+    builder.row(
+        InlineKeyboardButton(text="« Назад", callback_data=f"client_{client_id}")
+    )
+    
+    await callback.message.edit_text(
+        "🔗 <b>Выберите домен для привязки:</b>",
+        parse_mode="HTML",
+        reply_markup=builder.as_markup()
+    )
+
+
+@router.callback_query(F.data.startswith("link_domain_"))
+async def callback_link_domain(callback: CallbackQuery):
+    """Привязываем выбранный домен к клиенту"""
+    await callback.answer()
+    
+    parts = callback.data.split("_")
+    client_id = int(parts[2])
+    domain_id = int(parts[3])
+    
+    try:
+        # Привязываем домен к клиенту
+        domain = await db_manager.assign_domain_to_client(domain_id, client_id)
+        
+        # Получаем информацию о клиенте
+        user = await db_manager.register_user(client_id, None, None, None)
+        
+        await callback.message.edit_text(
+            f"✅ <b>Домен привязан!</b>\n\n"
+            f"🌐 Домен: <b>{domain.name}</b>\n"
+            f"👤 Клиент: @{user.username or user.phone or f'ID:{user.id}'}\n\n"
+            f"Теперь клиент может управлять этим доменом и будет получать отчеты.",
+            parse_mode="HTML",
+            reply_markup=get_back_keyboard()
+        )
+        
+        logger.info(f"Domain {domain.name} (ID:{domain_id}) assigned to client {client_id}")
+        
+    except Exception as e:
+        logger.error(f"Error linking domain {domain_id} to client {client_id}: {e}", exc_info=True)
+        await callback.message.edit_text(
+            f"❌ Ошибка при привязке домена:\n{str(e)}",
+            parse_mode="HTML",
+            reply_markup=get_back_keyboard()
+        )
 
 
 # Экспортируем роутер

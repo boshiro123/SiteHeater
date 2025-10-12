@@ -9,4 +9,5 @@ class AddDomainStates(StatesGroup):
     waiting_for_domain = State()
     waiting_for_confirmation = State()
     waiting_for_custom_urls = State()
+    waiting_for_client_selection = State()
 
