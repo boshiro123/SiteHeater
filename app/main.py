@@ -30,6 +30,23 @@ class SiteHeaterApp:
         self.dp: Dispatcher = None
         self.shutdown_event = asyncio.Event()
     
+    async def run_migrations(self):
+        """Автоматический запуск миграций Alembic"""
+        try:
+            from alembic.config import Config
+            from alembic import command
+            import os
+            
+            # Получаем путь к alembic.ini
+            alembic_cfg = Config("/app/alembic.ini")
+            
+            logger.info("📦 Running database migrations...")
+            command.upgrade(alembic_cfg, "head")
+            logger.info("✅ Database migrations completed")
+        except Exception as e:
+            logger.warning(f"⚠️ Migration warning (may be first run): {e}")
+            # Не падаем, просто предупреждаем
+    
     async def on_startup(self):
         """Действия при запуске"""
         logger.info("🚀 Starting SiteHeater...")
@@ -40,6 +57,9 @@ class SiteHeaterApp:
         except ValueError as e:
             logger.error(f"❌ Configuration error: {e}")
             sys.exit(1)
+        
+        # Запуск миграций
+        await asyncio.to_thread(self.run_migrations)
         
         # Инициализация базы данных
         try:
