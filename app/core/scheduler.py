@@ -12,6 +12,7 @@ from apscheduler.triggers.interval import IntervalTrigger
 from app.config import config
 from app.core.db import db_manager
 from app.core.warmer import warmer
+from app.core.reports import report_generator
 from app.utils.url_grouper import url_grouper
 
 if TYPE_CHECKING:
@@ -36,7 +37,18 @@ class WarmingScheduler:
     def start(self) -> None:
         """Запуск планировщика"""
         self.scheduler.start()
-        logger.info("Scheduler started")
+        
+        # Добавляем задачу для ежедневных отчетов (в 6:00 UTC = 9:00 UTC+3 Минск)
+        self.scheduler.add_job(
+            self.send_daily_reports_task,
+            trigger='cron',
+            hour=6,
+            minute=0,
+            id='daily_reports',
+            replace_existing=True
+        )
+        logger.info("Scheduler started with daily reports at 06:00 UTC (09:00 Minsk)")
+
     
     def shutdown(self) -> None:
         """Остановка планировщика"""
@@ -250,6 +262,15 @@ class WarmingScheduler:
             
         except Exception as e:
             logger.error(f"Error reloading jobs: {e}", exc_info=True)
+    
+    async def send_daily_reports_task(self) -> None:
+        """Задача для отправки ежедневных отчетов"""
+        if not self.bot:
+            logger.warning("Bot instance not set, skipping daily reports")
+            return
+        
+        logger.info("Sending daily reports...")
+        await report_generator.send_daily_reports(self.bot)
 
 
 # Глобальный экземпляр

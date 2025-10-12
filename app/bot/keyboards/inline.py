@@ -219,3 +219,66 @@ def get_warming_group_keyboard(domain_id: int, action: str = "warm") -> InlineKe
     
     return builder.as_markup()
 
+
+def get_clients_keyboard(clients: List) -> InlineKeyboardMarkup:
+    """Клавиатура со списком клиентов"""
+    builder = InlineKeyboardBuilder()
+    
+    for client in clients:
+        display_name = f"@{client.username}" if client.username else client.phone or f"ID:{client.id}"
+        builder.row(
+            InlineKeyboardButton(
+                text=f"👤 {display_name}",
+                callback_data=f"client_{client.id}"
+            )
+        )
+    
+    return builder.as_markup()
+
+
+def get_client_actions_keyboard(client_id: int) -> InlineKeyboardMarkup:
+    """Клавиатура действий с клиентом"""
+    builder = InlineKeyboardBuilder()
+    
+    builder.row(
+        InlineKeyboardButton(text="📋 Домены клиента", callback_data=f"client_domains_{client_id}")
+    )
+    builder.row(
+        InlineKeyboardButton(text="➕ Привязать домен", callback_data=f"assign_domain_{client_id}")
+    )
+    builder.row(
+        InlineKeyboardButton(text="« Назад к списку", callback_data="back_to_clients")
+    )
+    
+    return builder.as_markup()
+
+
+def get_back_keyboard() -> InlineKeyboardMarkup:
+    """Простая клавиатура "Назад" """
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        InlineKeyboardButton(text="« Назад", callback_data="back")
+    )
+    return builder.as_markup()
+
+
+def get_select_client_keyboard(clients: List) -> InlineKeyboardMarkup:
+    """Клавиатура выбора клиента для домена"""
+    builder = InlineKeyboardBuilder()
+    
+    # Добавляем опцию "Без клиента" (для админов)
+    builder.row(
+        InlineKeyboardButton(text="🔹 Без клиента (админский домен)", callback_data="select_client_none")
+    )
+    
+    # Добавляем клиентов
+    for client in clients:
+        display_name = f"@{client.username}" if client.username else client.phone or f"ID:{client.id}"
+        builder.row(
+            InlineKeyboardButton(
+                text=f"👤 {display_name}",
+                callback_data=f"select_client_{client.id}"
+            )
+        )
+    
+    return builder.as_markup()

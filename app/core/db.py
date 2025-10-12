@@ -319,6 +319,113 @@ class DatabaseManager:
                 .order_by(WarmingHistory.started_at.asc())
             )
             return list(result.scalars().all())
+    
+    # Role and client methods
+    async def set_user_role(self, user_id: int, role: str) -> User:
+        """Установка роли пользователя"""
+        async with self.async_session() as session:
+            result = await session.execute(
+                select(User).where(User.id == user_id)
+            )
+            user = result.scalar_one_or_none()
+            
+            if user:
+                user.role = role
+                await session.commit()
+                await session.refresh(user)
+                logger.info(f"User {user_id} role changed to {role}")
+            
+            return user
+    
+    async def get_user_by_username_or_phone(self, identifier: str) -> Optional[User]:
+        """Получение пользователя по username или phone"""
+        async with self.async_session() as session:
+            # Убираем @ если есть в начале username
+            clean_identifier = identifier.lstrip('@')
+            
+            result = await session.execute(
+                select(User).where(
+                    (User.username == clean_identifier) | (User.phone == clean_identifier)
+                )
+            )
+            return result.scalar_one_or_none()
+    
+    async def create_client(self, telegram_id: int, username: Optional[str], phone: Optional[str], 
+                          first_name: Optional[str] = None, last_name: Optional[str] = None) -> User:
+        """Создание клиента"""
+        async with self.async_session() as session:
+            user = User(
+                id=telegram_id,
+                username=username,
+                phone=phone,
+                first_name=first_name,
+                last_name=last_name,
+                role="client"
+            )
+            session.add(user)
+            await session.commit()
+            await session.refresh(user)
+            logger.info(f"Created client: {telegram_id} ({username or phone})")
+            return user
+    
+    async def get_all_admins(self) -> List[User]:
+        """Получение всех администраторов"""
+        async with self.async_session() as session:
+            result = await session.execute(
+                select(User).where(User.role == "admin", User.is_active == True)
+            )
+            return list(result.scalars().all())
+    
+    async def get_all_clients(self) -> List[User]:
+        """Получение всех клиентов"""
+        async with self.async_session() as session:
+            result = await session.execute(
+                select(User).where(User.role == "client", User.is_active == True)
+            )
+            return list(result.scalars().all())
+    
+    async def assign_domain_to_client(self, domain_id: int, client_id: int) -> Domain:
+        """Привязка домена к клиенту"""
+        async with self.async_session() as session:
+            result = await session.execute(
+                select(Domain).where(Domain.id == domain_id)
+            )
+            domain = result.scalar_one_or_none()
+            
+            if domain:
+                domain.client_id = client_id
+                await session.commit()
+                await session.refresh(domain)
+                logger.info(f"Domain {domain_id} assigned to client {client_id}")
+            
+            return domain
+    
+    async def get_domains_by_client(self, client_id: int) -> List[Domain]:
+        """Получение доменов клиента"""
+        async with self.async_session() as session:
+            result = await session.execute(
+                select(Domain)
+                .options(selectinload(Domain.urls), selectinload(Domain.jobs))
+                .where(Domain.client_id == client_id)
+                .order_by(Domain.created_at.desc())
+            )
+            return list(result.scalars().all())
+    
+    async def update_user_phone(self, user_id: int, phone: str) -> User:
+        """Обновление телефона пользователя"""
+        async with self.async_session() as session:
+            result = await session.execute(
+                select(User).where(User.id == user_id)
+            )
+            user = result.scalar_one_or_none()
+            
+            if user:
+                user.phone = phone
+                await session.commit()
+                await session.refresh(user)
+                logger.info(f"User {user_id} phone updated to {phone}")
+            
+            return user
 
 
 # Глобальный экземпляр

@@ -16,7 +16,7 @@ from app.core.warming_manager import warming_manager
 from app.utils.logger import setup_logging
 
 # Импорт обработчиков
-from app.bot.handlers import start, add_domain, domains, help, status, diagnostics
+from app.bot.handlers import start, add_domain, domains, help, status, diagnostics, admin
 from app.bot.middlewares import UserRegistrationMiddleware
 
 logger = logging.getLogger(__name__)
@@ -117,6 +117,7 @@ class SiteHeaterApp:
         
         self.dp.include_router(start.router)
         self.dp.include_router(help.router)
+        self.dp.include_router(admin.router)  # Роутер администраторов
         self.dp.include_router(status.router)
         self.dp.include_router(diagnostics.router)
         self.dp.include_router(add_domain.router)

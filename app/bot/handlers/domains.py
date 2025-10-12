@@ -33,18 +33,31 @@ router = Router()
 @router.message(Command("domains"))
 async def cmd_domains(message: Message):
     """Команда /domains - список доменов"""
-    # Получаем ВСЕ домены (без фильтрации по user_id)
-    domains = await db_manager.get_all_domains(user_id=None)
+    # Получаем пользователя для проверки роли
+    user = await db_manager.get_or_create_user(
+        user_id=message.from_user.id,
+        username=message.from_user.username,
+        first_name=message.from_user.first_name,
+        last_name=message.from_user.last_name
+    )
+    
+    # Админы видят ВСЕ домены, клиенты - только свои
+    if user.role == "admin":
+        domains = await db_manager.get_all_domains(user_id=None)
+        title = "Все домены"
+    else:
+        domains = await db_manager.get_domains_by_client(user.id)
+        title = "Ваши домены"
     
     if not domains:
         await message.answer(
-            "📭 Пока нет добавленных доменов.\n\n"
-            "Используйте /add для добавления домена."
+            f"📭 {'Пока нет доменов' if user.role == 'admin' else 'У вас пока нет доменов'}.\n\n"
+            f"{'Используйте /add для добавления домена.' if user.role == 'admin' else 'Обратитесь к администратору для добавления доменов.'}"
         )
         return
     
     await message.answer(
-        f"📋 <b>Все домены ({len(domains)}):</b>\n\n"
+        f"📋 <b>{title} ({len(domains)}):</b>\n\n"
         f"Выберите домен для управления:",
         parse_mode="HTML",
         reply_markup=get_domains_keyboard(domains)
@@ -56,18 +69,28 @@ async def callback_back_to_domains(callback: CallbackQuery):
     """Возврат к списку доменов"""
     await callback.answer()
     
-    # Получаем ВСЕ домены (без фильтрации по user_id)
-    domains = await db_manager.get_all_domains(user_id=None)
+    # Получаем пользователя для проверки роли
+    user = await db_manager.get_or_create_user(
+        user_id=callback.from_user.id,
+        username=callback.from_user.username,
+        first_name=callback.from_user.first_name,
+        last_name=callback.from_user.last_name
+    )
+    
+    # Админы видят ВСЕ домены, клиенты - только свои
+    if user.role == "admin":
+        domains = await db_manager.get_all_domains(user_id=None)
+        title = "Все домены"
+    else:
+        domains = await db_manager.get_domains_by_client(user.id)
+        title = "Ваши домены"
     
     if not domains:
-        await callback.message.edit_text(
-            "📭 Нет доменов.\n\n"
-            "Используйте /add для добавления."
-        )
+        await callback.message.edit_text("📭 Нет доменов.")
         return
     
     await callback.message.edit_text(
-        f"📋 <b>Все домены ({len(domains)}):</b>\n\n"
+        f"📋 <b>{title} ({len(domains)}):</b>\n\n"
         f"Выберите домен для управления:",
         parse_mode="HTML",
         reply_markup=get_domains_keyboard(domains)
