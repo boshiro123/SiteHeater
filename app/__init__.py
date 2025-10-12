@@ -1,1 +1,3 @@
-]
+"""
+SiteHeater Application Package
+"""
