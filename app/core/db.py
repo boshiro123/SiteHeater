@@ -10,7 +10,7 @@ from sqlalchemy import select, delete
 from sqlalchemy.orm import selectinload
 
 from app.config import config
-from app.models.domain import Base, Domain, URL, Job, User, WarmingHistory
+from app.models.domain import Base, Domain, URL, Job, User, WarmingHistory, PendingClient
 
 logger = logging.getLogger(__name__)
 
@@ -444,6 +444,55 @@ class DatabaseManager:
                 logger.info(f"User {user_id} phone updated to {phone}")
             
             return user
+    
+    # === Методы для работы с ожидающими клиентами ===
+    
+    async def create_pending_client(self, username: Optional[str], phone: Optional[str], invited_by: int) -> PendingClient:
+        """Создание ожидающего клиента"""
+        async with self.async_session() as session:
+            # Убираем @ если есть
+            clean_username = username.lstrip('@') if username else None
+            
+            pending_client = PendingClient(
+                username=clean_username,
+                phone=phone,
+                invited_by=invited_by
+            )
+            session.add(pending_client)
+            await session.commit()
+            await session.refresh(pending_client)
+            
+            logger.info(f"Created pending client: username={clean_username}, phone={phone}, invited_by={invited_by}")
+            return pending_client
+    
+    async def get_pending_client_by_username_or_phone(self, username: Optional[str], phone: Optional[str]) -> Optional[PendingClient]:
+        """Получение ожидающего клиента по username или phone"""
+        async with self.async_session() as session:
+            clean_username = username.lstrip('@') if username else None
+            
+            result = await session.execute(
+                select(PendingClient).where(
+                    (PendingClient.username == clean_username) | (PendingClient.phone == phone)
+                )
+            )
+            return result.scalar_one_or_none()
+    
+    async def delete_pending_client(self, pending_client_id: int) -> None:
+        """Удаление ожидающего клиента"""
+        async with self.async_session() as session:
+            await session.execute(
+                delete(PendingClient).where(PendingClient.id == pending_client_id)
+            )
+            await session.commit()
+            logger.info(f"Deleted pending client {pending_client_id}")
+    
+    async def get_all_pending_clients(self) -> List[PendingClient]:
+        """Получение всех ожидающих клиентов"""
+        async with self.async_session() as session:
+            result = await session.execute(
+                select(PendingClient).order_by(PendingClient.created_at.desc())
+            )
+            return list(result.scalars().all())
 
 
 # Глобальный экземпляр

@@ -17,6 +17,12 @@ router = Router()
 @router.message(CommandStart())
 async def cmd_start(message: Message):
     """Обработчик команды /start"""
+    # Проверяем, есть ли приглашение для этого пользователя
+    pending = await db_manager.get_pending_client_by_username_or_phone(
+        username=message.from_user.username,
+        phone=None  # Telegram не передает phone через API
+    )
+    
     # Получаем пользователя (middleware уже создал/обновил его)
     user = await db_manager.register_user(
         user_id=message.from_user.id,
@@ -24,6 +30,32 @@ async def cmd_start(message: Message):
         first_name=message.from_user.first_name,
         last_name=message.from_user.last_name
     )
+    
+    # Если было приглашение - активируем клиента и удаляем приглашение
+    if pending:
+        # Устанавливаем роль клиента
+        user = await db_manager.set_user_role(user.id, "client")
+        
+        # Удаляем приглашение
+        await db_manager.delete_pending_client(pending.id)
+        
+        # Отправляем особое приветствие
+        await message.answer(
+            "✅ <b>Добро пожаловать!</b>\n\n"
+            "Ваш аккаунт успешно активирован!\n\n"
+            "Администратор может теперь привязать к вам домены.\n"
+            "После привязки доменов вы сможете:\n"
+            "• Просматривать их через /domains\n"
+            "• Получать ежедневные отчеты в 9:00\n\n"
+            "<b>Доступные команды:</b>\n"
+            "/domains - Ваши домены\n"
+            "/status - Активные прогревы\n"
+            "/help - Справка",
+            parse_mode="HTML"
+        )
+        
+        logger.info(f"Activated client {user.id} from pending invitation")
+        return
     
     if user.role == "admin":
         welcome_text = """

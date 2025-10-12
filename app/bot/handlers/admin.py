@@ -170,7 +170,7 @@ async def cmd_add_client(message: Message, state: FSMContext):
     await message.answer(
         "➕ <b>Добавление клиента</b>\n\n"
         "Отправьте username (например @username) или телефон клиента.\n\n"
-        "Клиент должен сначала запустить бота командой /start",
+        "<b>Важно:</b> Клиент должен будет запустить бота командой /start для активации.",
         parse_mode="HTML"
     )
     await state.set_state(AddClientStates.waiting_for_identifier)
@@ -181,40 +181,77 @@ async def process_client_identifier(message: Message, state: FSMContext):
     """Обработка username или телефона клиента"""
     identifier = message.text.strip()
     
-    # Ищем пользователя
-    user = await db_manager.get_user_by_username_or_phone(identifier)
+    # Определяем, что это - username или телефон
+    username = None
+    phone = None
     
-    if not user:
+    if identifier.startswith('@') or not identifier.startswith('+'):
+        # Это username
+        username = identifier.lstrip('@')
+    else:
+        # Это телефон
+        phone = identifier
+    
+    # Проверяем, не зарегистрирован ли уже этот пользователь
+    existing_user = await db_manager.get_user_by_username_or_phone(identifier)
+    if existing_user:
+        if existing_user.role == "admin":
+            await message.answer(
+                "❌ Этот пользователь уже является администратором.\n\n"
+                "Попробуйте другого или /cancel для отмены.",
+                parse_mode="HTML"
+            )
+            return
+        else:
+            await message.answer(
+                "✅ Этот пользователь уже зарегистрирован как клиент!\n\n"
+                f"👤 Username: @{existing_user.username or 'не указан'}\n"
+                f"📱 Телефон: {existing_user.phone or 'не указан'}\n\n"
+                f"Вы можете привязать к нему домены через /add",
+                parse_mode="HTML"
+            )
+            await state.clear()
+            return
+    
+    # Проверяем, нет ли уже ожидающего приглашения
+    existing_pending = await db_manager.get_pending_client_by_username_or_phone(username, phone)
+    if existing_pending:
         await message.answer(
-            "❌ Пользователь не найден.\n\n"
-            "Убедитесь, что:\n"
-            "1. Пользователь запустил бота командой /start\n"
-            "2. Username или телефон указаны правильно\n\n"
-            "Попробуйте еще раз или /cancel для отмены.",
+            "⚠️ Приглашение для этого клиента уже создано.\n\n"
+            "Клиент должен запустить бота командой /start для активации.",
             parse_mode="HTML"
         )
+        await state.clear()
         return
     
-    if user.role == "admin":
+    # Создаем ожидающего клиента
+    try:
+        pending_client = await db_manager.create_pending_client(
+            username=username,
+            phone=phone,
+            invited_by=message.from_user.id
+        )
+        
+        display_identifier = f"@{username}" if username else phone
+        
         await message.answer(
-            "❌ Этот пользователь уже является администратором.\n\n"
-            "Попробуйте другого или /cancel для отмены.",
+            f"✅ <b>Приглашение создано!</b>\n\n"
+            f"👤 Идентификатор: {display_identifier}\n\n"
+            f"<b>Следующий шаг:</b>\n"
+            f"Попросите клиента запустить бота командой /start\n\n"
+            f"После этого он будет автоматически активирован, и вы сможете привязать к нему домены через /add",
             parse_mode="HTML"
         )
-        return
-    
-    # Устанавливаем роль клиента (если еще не установлена)
-    if user.role != "client":
-        user = await db_manager.set_user_role(user.id, "client")
-    
-    await message.answer(
-        f"✅ <b>Клиент добавлен!</b>\n\n"
-        f"👤 Username: @{user.username or 'не указан'}\n"
-        f"📱 Телефон: {user.phone or 'не указан'}\n"
-        f"🆔 ID: <code>{user.id}</code>\n\n"
-        f"Теперь вы можете привязать к нему домены через /add",
-        parse_mode="HTML"
-    )
+        
+        logger.info(f"Admin {message.from_user.id} created pending client: {display_identifier}")
+        
+    except Exception as e:
+        logger.error(f"Error creating pending client: {e}", exc_info=True)
+        await message.answer(
+            f"❌ Ошибка при создании приглашения:\n{str(e)}\n\n"
+            "Попробуйте еще раз или обратитесь к администратору.",
+            parse_mode="HTML"
+        )
     
     await state.clear()
 

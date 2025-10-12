@@ -90,6 +90,20 @@ class User(Base):
         return f"<User(id={self.id}, username={self.username}, role={self.role})>"
 
 
+class PendingClient(Base):
+    """Модель ожидающих клиентов (приглашения от админов)"""
+    __tablename__ = "pending_clients"
+    
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    username: Mapped[Optional[str]] = mapped_column(String(255), nullable=True, unique=True, index=True)
+    phone: Mapped[Optional[str]] = mapped_column(String(50), nullable=True, unique=True, index=True)
+    invited_by: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id"), nullable=False)  # ID админа
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    
+    def __repr__(self) -> str:
+        return f"<PendingClient(id={self.id}, username={self.username}, phone={self.phone})>"
+
+
 class WarmingHistory(Base):
     """Модель истории прогревов для статистики"""
     __tablename__ = "warming_history"
