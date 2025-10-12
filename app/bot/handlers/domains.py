@@ -123,16 +123,33 @@ async def callback_domain_info(callback: CallbackQuery):
             if active_job.last_run:
                 job_info += f"\n🕒 Последний запуск: {active_job.last_run.strftime('%Y-%m-%d %H:%M')}"
     
-    await callback.message.edit_text(
+    text = (
         f"🌐 <b>{domain.name}</b>\n\n"
         f"Статус: {status_text}\n"
         f"📊 Страниц: <b>{urls_count}</b>\n"
         f"📅 Добавлен: {domain.created_at.strftime('%Y-%m-%d %H:%M')}"
         f"{job_info}\n\n"
-        f"Выберите действие:",
-        parse_mode="HTML",
-        reply_markup=get_domain_actions_keyboard(domain_id, has_active_job)
+        f"Выберите действие:"
     )
+    
+    # Безопасное редактирование сообщения
+    try:
+        await callback.message.edit_text(
+            text,
+            parse_mode="HTML",
+            reply_markup=get_domain_actions_keyboard(domain_id, has_active_job)
+        )
+    except Exception:
+        # Если не получилось отредактировать, удаляем старое и отправляем новое
+        try:
+            await callback.message.delete()
+        except Exception:
+            pass
+        await callback.message.answer(
+            text,
+            parse_mode="HTML",
+            reply_markup=get_domain_actions_keyboard(domain_id, has_active_job)
+        )
 
 
 # Более специфичный обработчик должен быть выше!

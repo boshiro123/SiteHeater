@@ -8,6 +8,7 @@ import sys
 
 from aiogram import Bot, Dispatcher
 from aiogram.fsm.storage.memory import MemoryStorage
+from aiogram.types import BotCommand, BotCommandScopeDefault
 
 from app.config import config
 from app.core.db import db_manager
@@ -47,6 +48,38 @@ class SiteHeaterApp:
             logger.warning(f"⚠️ Migration warning (may be first run): {e}")
             # Не падаем, просто предупреждаем
     
+    async def setup_bot_commands(self):
+        """Установка команд бота (меню команд)"""
+        try:
+            # Команды для всех пользователей (базовые)
+            default_commands = [
+                BotCommand(command="start", description="🚀 Запустить бота"),
+                BotCommand(command="help", description="❓ Справка"),
+                BotCommand(command="domains", description="🌐 Мои домены"),
+                BotCommand(command="status", description="📊 Статус прогревов"),
+            ]
+            
+            # Команды для администраторов (дополнительные)
+            admin_commands = [
+                BotCommand(command="start", description="🚀 Запустить бота"),
+                BotCommand(command="help", description="❓ Справка"),
+                BotCommand(command="domains", description="🌐 Все домены"),
+                BotCommand(command="add", description="➕ Добавить домен"),
+                BotCommand(command="add_client", description="👥 Добавить клиента"),
+                BotCommand(command="clients", description="👥 Управление клиентами"),
+                BotCommand(command="status", description="📊 Статус прогревов"),
+            ]
+            
+            # Устанавливаем команды по умолчанию для всех пользователей
+            await self.bot.set_my_commands(
+                commands=default_commands,
+                scope=BotCommandScopeDefault()
+            )
+            
+            logger.info("✅ Bot commands configured")
+        except Exception as e:
+            logger.error(f"❌ Error setting bot commands: {e}", exc_info=True)
+    
     async def on_startup(self):
         """Действия при запуске"""
         logger.info("🚀 Starting SiteHeater...")
@@ -68,6 +101,9 @@ class SiteHeaterApp:
         except Exception as e:
             logger.error(f"❌ Database initialization error: {e}", exc_info=True)
             sys.exit(1)
+        
+        # Установка команд бота
+        await self.setup_bot_commands()
         
         # Запуск планировщика
         try:
