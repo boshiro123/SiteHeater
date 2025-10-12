@@ -46,7 +46,7 @@ async def cmd_clients(message: Message):
     )
 
 
-@router.callback_query(F.data.startswith("client_"))
+@router.callback_query(F.data.startswith("client_") & ~F.data.startswith("client_domains_"))
 async def callback_client_details(callback: CallbackQuery):
     """Детали клиента"""
     await callback.answer()
@@ -81,6 +81,46 @@ async def callback_client_details(callback: CallbackQuery):
         parse_mode="HTML",
         reply_markup=get_client_actions_keyboard(client_id)
     )
+
+
+@router.callback_query(F.data.startswith("client_domains_"))
+async def callback_client_domains(callback: CallbackQuery):
+    """Показать домены клиента"""
+    await callback.answer()
+    
+    client_id = int(callback.data.split("_")[2])
+    
+    # Получаем домены клиента
+    domains = await db_manager.get_domains_by_client(client_id)
+    
+    if not domains:
+        await callback.message.edit_text(
+            "📋 <b>У клиента пока нет доменов</b>\n\n"
+            "Используйте /add для добавления домена и привязки к клиенту.",
+            parse_mode="HTML",
+            reply_markup=get_back_keyboard()
+        )
+        return
+    
+    domains_text = "📋 <b>Домены клиента:</b>\n\n"
+    for domain in domains:
+        status = "🟢" if domain.is_active else "🔴"
+        domains_text += f"{status} <b>{domain.name}</b>\n"
+        domains_text += f"   📊 Страниц: {len(domain.urls)}\n"
+        domains_text += f"   📅 Добавлен: {domain.created_at.strftime('%Y-%m-%d')}\n\n"
+    
+    await callback.message.edit_text(
+        domains_text,
+        parse_mode="HTML",
+        reply_markup=get_back_keyboard()
+    )
+
+
+@router.callback_query(F.data == "back")
+async def callback_back(callback: CallbackQuery):
+    """Универсальная кнопка назад"""
+    await callback.answer()
+    await callback.message.delete()
 
 
 @router.callback_query(F.data == "back_to_clients")
