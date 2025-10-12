@@ -84,22 +84,25 @@ def get_schedule_keyboard(domain_id: int, group: int = 3) -> InlineKeyboardMarku
     """Клавиатура выбора частоты прогрева"""
     builder = InlineKeyboardBuilder()
     
+    # Создаем интервалы от 5 до 15 минут с шагом в 1 минуту
     schedules = [
-        ("Каждые 5 минут", "5m"),
-        ("Каждые 15 минут", "15m"),
-        ("Каждые 30 минут", "30m"),
-        ("Каждый час", "1h"),
-        ("Каждые 2 часа", "2h"),
-        ("Каждые 6 часов", "6h"),
+        (f"Каждые {i} минут", f"{i}m")
+        for i in range(5, 16)  # 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15
     ]
     
-    for text, schedule in schedules:
-        builder.row(
-            InlineKeyboardButton(
-                text=text,
-                callback_data=f"set_schedule_{domain_id}_{group}_{schedule}"
-            )
-        )
+    # Отображаем в 2 колонки для компактности
+    for i in range(0, len(schedules), 2):
+        buttons = []
+        for j in range(2):
+            if i + j < len(schedules):
+                text, schedule = schedules[i + j]
+                buttons.append(
+                    InlineKeyboardButton(
+                        text=text,
+                        callback_data=f"set_schedule_{domain_id}_{group}_{schedule}"
+                    )
+                )
+        builder.row(*buttons)
     
     builder.row(
         InlineKeyboardButton(text="« Назад", callback_data=f"domain_{domain_id}")
