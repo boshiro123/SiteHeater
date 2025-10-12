@@ -41,3 +41,9 @@ class UserRegistrationMiddleware(BaseMiddleware):
         # Продолжаем обработку
         return await handler(event, data)
 
+
+# Экспортируем классы
+from app.bot.middlewares.role_check import AdminOnlyMiddleware
+
+__all__ = ['UserRegistrationMiddleware', 'AdminOnlyMiddleware']
+
