@@ -18,7 +18,7 @@ router = Router()
 async def cmd_start(message: Message):
     """Обработчик команды /start"""
     # Получаем пользователя (middleware уже создал/обновил его)
-    user = await db_manager.get_or_create_user(
+    user = await db_manager.register_user(
         user_id=message.from_user.id,
         username=message.from_user.username,
         first_name=message.from_user.first_name,

@@ -78,7 +78,7 @@ async def callback_client_details(callback: CallbackQuery):
     client_id = int(callback.data.split("_")[1])
     
     # Получаем клиента
-    user = await db_manager.get_or_create_user(client_id, None, None, None)
+    user = await db_manager.register_user(client_id, None, None, None)
     
     if not user:
         await callback.message.edit_text("❌ Клиент не найден.")

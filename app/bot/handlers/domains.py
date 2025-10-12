@@ -34,7 +34,7 @@ router = Router()
 async def cmd_domains(message: Message):
     """Команда /domains - список доменов"""
     # Получаем пользователя для проверки роли
-    user = await db_manager.get_or_create_user(
+    user = await db_manager.register_user(
         user_id=message.from_user.id,
         username=message.from_user.username,
         first_name=message.from_user.first_name,
@@ -70,7 +70,7 @@ async def callback_back_to_domains(callback: CallbackQuery):
     await callback.answer()
     
     # Получаем пользователя для проверки роли
-    user = await db_manager.get_or_create_user(
+    user = await db_manager.register_user(
         user_id=callback.from_user.id,
         username=callback.from_user.username,
         first_name=callback.from_user.first_name,

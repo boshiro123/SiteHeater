@@ -24,7 +24,7 @@ class AdminOnlyMiddleware(BaseMiddleware):
         user_id = event.from_user.id
         
         # Получаем пользователя из БД
-        user = await db_manager.get_or_create_user(
+        user = await db_manager.register_user(
             user_id=user_id,
             username=event.from_user.username,
             first_name=event.from_user.first_name,
