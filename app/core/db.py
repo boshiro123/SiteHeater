@@ -337,6 +337,14 @@ class DatabaseManager:
             
             return user
     
+    async def get_user_by_id(self, user_id: int) -> Optional[User]:
+        """Получение пользователя по ID"""
+        async with self.async_session() as session:
+            result = await session.execute(
+                select(User).where(User.id == user_id)
+            )
+            return result.scalar_one_or_none()
+    
     async def get_user_by_username_or_phone(self, identifier: str) -> Optional[User]:
         """Получение пользователя по username или phone"""
         async with self.async_session() as session:

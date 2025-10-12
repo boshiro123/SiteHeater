@@ -54,7 +54,7 @@ async def callback_client_details(callback: CallbackQuery):
     client_id = int(callback.data.split("_")[1])
     
     # Получаем клиента
-    user = await db_manager.register_user(client_id, None, None, None)
+    user = await db_manager.get_user_by_id(client_id)
     
     if not user:
         await callback.message.edit_text("❌ Клиент не найден.")
@@ -62,6 +62,17 @@ async def callback_client_details(callback: CallbackQuery):
     
     # Получаем домены клиента
     domains = await db_manager.get_domains_by_client(client_id)
+    
+    # Формируем отображаемое имя
+    display_name = ""
+    if user.first_name:
+        display_name = user.first_name
+        if user.last_name:
+            display_name += f" {user.last_name}"
+    elif user.username:
+        display_name = f"@{user.username}"
+    else:
+        display_name = f"ID: {user.id}"
     
     domains_text = ""
     if domains:
@@ -71,10 +82,13 @@ async def callback_client_details(callback: CallbackQuery):
     else:
         domains_text = "\n\n📋 <b>Доменов пока нет</b>"
     
+    # Формируем username строку
+    username_str = f"@{user.username}" if user.username else "не указан"
+    
     await callback.message.edit_text(
-        f"👤 <b>Клиент</b>\n\n"
+        f"👤 <b>{display_name}</b>\n\n"
         f"🆔 ID: <code>{user.id}</code>\n"
-        f"👤 Username: @{user.username or 'не указан'}\n"
+        f"👤 Username: {username_str}\n"
         f"📱 Телефон: {user.phone or 'не указан'}\n"
         f"📅 Регистрация: {user.created_at.strftime('%Y-%m-%d %H:%M')}"
         f"{domains_text}",
@@ -85,7 +99,7 @@ async def callback_client_details(callback: CallbackQuery):
 
 @router.callback_query(F.data.startswith("client_domains_"))
 async def callback_client_domains(callback: CallbackQuery):
-    """Показать домены клиента"""
+    """Показать домены клиента с возможностью управления"""
     await callback.answer()
     
     client_id = int(callback.data.split("_")[2])
@@ -102,17 +116,29 @@ async def callback_client_domains(callback: CallbackQuery):
         )
         return
     
-    domains_text = "📋 <b>Домены клиента:</b>\n\n"
+    # Создаем клавиатуру с доменами
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+    from aiogram.types import InlineKeyboardButton
+    
+    builder = InlineKeyboardBuilder()
     for domain in domains:
         status = "🟢" if domain.is_active else "🔴"
-        domains_text += f"{status} <b>{domain.name}</b>\n"
-        domains_text += f"   📊 Страниц: {len(domain.urls)}\n"
-        domains_text += f"   📅 Добавлен: {domain.created_at.strftime('%Y-%m-%d')}\n\n"
+        builder.row(
+            InlineKeyboardButton(
+                text=f"{status} {domain.name} ({len(domain.urls)} URL)",
+                callback_data=f"domain_{domain.id}"
+            )
+        )
+    
+    builder.row(
+        InlineKeyboardButton(text="« Назад", callback_data=f"client_{client_id}")
+    )
     
     await callback.message.edit_text(
-        domains_text,
+        "📋 <b>Домены клиента:</b>\n\n"
+        "Выберите домен для управления:",
         parse_mode="HTML",
-        reply_markup=get_back_keyboard()
+        reply_markup=builder.as_markup()
     )
 
 
@@ -266,12 +292,25 @@ async def callback_link_domain(callback: CallbackQuery):
         domain = await db_manager.assign_domain_to_client(domain_id, client_id)
         
         # Получаем информацию о клиенте
-        user = await db_manager.register_user(client_id, None, None, None)
+        user = await db_manager.get_user_by_id(client_id)
+        
+        # Формируем отображаемое имя клиента
+        if user:
+            if user.first_name:
+                display_name = user.first_name
+                if user.last_name:
+                    display_name += f" {user.last_name}"
+            elif user.username:
+                display_name = f"@{user.username}"
+            else:
+                display_name = f"ID:{user.id}"
+        else:
+            display_name = f"ID:{client_id}"
         
         await callback.message.edit_text(
             f"✅ <b>Домен привязан!</b>\n\n"
             f"🌐 Домен: <b>{domain.name}</b>\n"
-            f"👤 Клиент: @{user.username or user.phone or f'ID:{user.id}'}\n\n"
+            f"👤 Клиент: {display_name}\n\n"
             f"Теперь клиент может управлять этим доменом и будет получать отчеты.",
             parse_mode="HTML",
             reply_markup=get_back_keyboard()

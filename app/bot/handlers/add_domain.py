@@ -322,8 +322,21 @@ async def callback_select_client(callback: CallbackQuery, state: FSMContext):
         # Если выбран клиент - привязываем
         if client_id:
             await db_manager.assign_domain_to_client(new_domain.id, client_id)
-            user = await db_manager.register_user(client_id, None, None, None)
-            client_info = f"👤 Клиент: @{user.username or user.phone or f'ID:{user.id}'}"
+            user = await db_manager.get_user_by_id(client_id)
+            
+            # Формируем отображаемое имя клиента
+            if user:
+                if user.first_name:
+                    display_name = user.first_name
+                    if user.last_name:
+                        display_name += f" {user.last_name}"
+                elif user.username:
+                    display_name = f"@{user.username}"
+                else:
+                    display_name = f"ID:{user.id}"
+                client_info = f"👤 Клиент: {display_name}"
+            else:
+                client_info = f"👤 Клиент: ID:{client_id}"
         else:
             client_info = "📌 Домен без клиента (админский)"
         
