@@ -65,10 +65,37 @@ services:
     networks:
       - siteheater_network
 
+  # Database Backup Service
+  backup:
+    image: postgres:15-alpine
+    container_name: siteheater_backup
+    restart: "no" # Запускается только по cron или вручную
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-siteheater}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-siteheater_password}
+      POSTGRES_DB: ${POSTGRES_DB:-siteheater}
+      POSTGRES_HOST: postgres
+      BACKUP_GITHUB_REPO: ${BACKUP_GITHUB_REPO}
+      BACKUP_GITHUB_TOKEN: ${BACKUP_GITHUB_TOKEN}
+      BACKUP_GITHUB_BRANCH: ${BACKUP_GITHUB_BRANCH:-main}
+      BACKUP_ENCRYPTION_KEY: ${BACKUP_ENCRYPTION_KEY}
+    volumes:
+      - ./scripts:/scripts
+      - backup_data:/app/backups
+    networks:
+      - siteheater_network
+    entrypoint: /bin/sh
+    command: -c "apk add --no-cache git openssl bash && /scripts/backup_db.sh"
+
 volumes:
   postgres_data:
     driver: local
   pgadmin_data:
+    driver: local
+  backup_data:
     driver: local
 
 networks:

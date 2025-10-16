@@ -68,3 +68,5 @@ QUICKSTART.md
 PROJECT_STRUCTURE.md
 README.md
 SETUP.md
+backup.env
+backup.env.example
