@@ -1,4 +1,4 @@
-.PHONY: help build up down restart logs clean migrate shell backup restore
+.PHONY: help build up down restart logs clean migrate shell backup restore backup-auto backup-stop
 
 help: ## Показать это сообщение помощи
 	@echo "Доступные команды:"
@@ -54,14 +54,19 @@ backup: ## Создать бэкап базы данных
 	docker-compose run --rm backup
 	@echo "✅ Бэкап создан!"
 
-backup-list: ## Показать список бэкапов
-	@echo "📦 Локальные бэкапы:"
-	@docker-compose run --rm backup ls -lh /app/backups/ || echo "Бэкапов пока нет"
+backup-list: ## Показать список бэкапов с подробной информацией
+	@bash scripts/list_backups.sh
 
 backup-clean: ## Удалить старые бэкапы (>30 дней)
 	@echo "🧹 Очистка старых бэкапов..."
 	@docker-compose run --rm backup find /app/backups -name "*.sql.gz*" -mtime +30 -delete
 	@echo "✅ Готово!"
+
+backup-auto: ## Настроить автоматический бэкап (через cron)
+	@bash scripts/setup_cron_backup.sh
+
+backup-stop: ## Остановить автоматический бэкап (удалить из cron)
+	@bash scripts/remove_cron_backup.sh
 
 restore: ## Восстановить из бэкапа (использование: make restore BACKUP=файл.sql.gz)
 	@if [ -z "$(BACKUP)" ]; then \
@@ -79,4 +84,7 @@ restore: ## Восстановить из бэкапа (использовани
 	else \
 		echo "❌ Восстановление отменено"; \
 	fi
+
+restore-quick: ## Быстрое восстановление из бэкапа (интерактивно)
+	@bash scripts/quick_restore.sh
 
