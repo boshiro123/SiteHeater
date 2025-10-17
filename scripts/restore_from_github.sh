@@ -156,8 +156,8 @@ if [ ! -f "${PROJECT_DIR}/scripts/restore_db.sh" ]; then
 fi
 
 # Пробуем без sudo, потом с sudo если не получилось
-if docker-compose run --rm -v "${PROJECT_DIR}/scripts:/scripts:ro" backup sh /scripts/restore_db.sh "/app/backups/${BACKUP_FILE}" 2>/dev/null || \
-   sudo docker-compose run --rm -v "${PROJECT_DIR}/scripts:/scripts:ro" backup sh /scripts/restore_db.sh "/app/backups/${BACKUP_FILE}"; then
+if docker-compose run --rm --entrypoint /bin/sh backup /scripts/restore_db.sh "/app/backups/${BACKUP_FILE}" 2>/dev/null || \
+   sudo docker-compose run --rm --entrypoint /bin/sh backup /scripts/restore_db.sh "/app/backups/${BACKUP_FILE}"; then
     echo ""
     echo "   ✅ База данных восстановлена"
 else
