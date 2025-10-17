@@ -37,7 +37,8 @@ class Config:
     # Technical channel for detailed warming reports (optional)
     # If set, warming notifications will be sent to this channel instead of admins
     # Example: -1001234567890 (channel ID)
-    TECHNICAL_CHANNEL_ID: Optional[str] = os.getenv("TECHNICAL_CHANNEL_ID", None)
+    _technical_channel_id_raw = os.getenv("TECHNICAL_CHANNEL_ID", None)
+    TECHNICAL_CHANNEL_ID: Optional[str] = _technical_channel_id_raw if _technical_channel_id_raw and _technical_channel_id_raw.strip() else None
     
     @classmethod
     def validate(cls) -> None:

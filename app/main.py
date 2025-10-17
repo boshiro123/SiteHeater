@@ -104,6 +104,15 @@ class SiteHeaterApp:
         # Установка команд бота
         await self.setup_bot_commands()
         
+        # Логирование конфигурации уведомлений
+        if config.SEND_WARMING_NOTIFICATIONS:
+            if config.TECHNICAL_CHANNEL_ID:
+                logger.info(f"📢 Warming notifications enabled → Technical channel: {config.TECHNICAL_CHANNEL_ID}")
+            else:
+                logger.info("📢 Warming notifications enabled → Admins")
+        else:
+            logger.info("📢 Warming notifications disabled")
+        
         # Запуск планировщика
         try:
             # Устанавливаем экземпляр бота в планировщик для отправки уведомлений

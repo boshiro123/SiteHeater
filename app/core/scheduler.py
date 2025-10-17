@@ -195,14 +195,22 @@ class WarmingScheduler:
             # Если указан технический канал - отправляем туда
             if config.TECHNICAL_CHANNEL_ID:
                 try:
+                    logger.debug(f"Attempting to send notification to channel: {config.TECHNICAL_CHANNEL_ID}")
                     await self.bot.send_message(
                         chat_id=config.TECHNICAL_CHANNEL_ID,
                         text=message,
                         parse_mode="HTML"
                     )
-                    logger.info(f"📤 Notification sent to technical channel for domain {domain.name}")
+                    logger.info(f"📤 Notification sent to technical channel ({config.TECHNICAL_CHANNEL_ID}) for domain {domain.name}")
                 except Exception as e:
-                    logger.error(f"Failed to send notification to technical channel: {e}")
+                    logger.error(
+                        f"❌ Failed to send notification to technical channel ({config.TECHNICAL_CHANNEL_ID}): {type(e).__name__}: {e}\n"
+                        f"Проверьте:\n"
+                        f"1. Бот добавлен в канал как администратор\n"
+                        f"2. У бота есть право 'Публиковать сообщения'\n"
+                        f"3. ID канала указан правильно (начинается с -100)",
+                        exc_info=True
+                    )
             else:
                 # Иначе отправляем администраторам (старое поведение)
                 admins = await db_manager.get_all_admins()
