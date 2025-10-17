@@ -90,4 +90,3 @@ restore-quick: ## Быстрое восстановление из бэкапа 
 
 restore-github: ## Восстановление из бэкапа на GitHub
 	@bash scripts/restore_from_github.sh
-

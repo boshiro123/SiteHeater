@@ -125,7 +125,7 @@ cd "${PROJECT_DIR}"
 
 # Копируем бэкап в Docker volume
 echo "2️⃣ Импорт бэкапа в Docker volume..."
-docker-compose run --rm -v "${PROJECT_DIR}/${BACKUP_FILE}:/tmp/${BACKUP_FILE}" backup cp "/tmp/${BACKUP_FILE}" "/app/backups/${BACKUP_FILE}"
+docker-compose run --rm -v "${PROJECT_DIR}/${BACKUP_FILE}:/tmp/${BACKUP_FILE}" backup sh -c "cp /tmp/${BACKUP_FILE} /app/backups/${BACKUP_FILE}"
 echo "   ✅ Бэкап импортирован"
 echo ""
 
