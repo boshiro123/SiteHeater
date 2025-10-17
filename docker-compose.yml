@@ -41,6 +41,7 @@ services:
       WARMER_CHUNK_SIZE: ${WARMER_CHUNK_SIZE:-400}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       SEND_WARMING_NOTIFICATIONS: ${SEND_WARMING_NOTIFICATIONS:-true}
+      TECHNICAL_CHANNEL_ID: ${TECHNICAL_CHANNEL_ID}
     networks:
       - siteheater_network
     volumes:
