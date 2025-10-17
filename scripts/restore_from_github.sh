@@ -156,8 +156,9 @@ if [ ! -f "${PROJECT_DIR}/scripts/restore_db.sh" ]; then
 fi
 
 # Пробуем без sudo, потом с sudo если не получилось
-if docker-compose run --rm --entrypoint /bin/sh backup /scripts/restore_db.sh "/app/backups/${BACKUP_FILE}" 2>/dev/null || \
-   sudo docker-compose run --rm --entrypoint /bin/sh backup /scripts/restore_db.sh "/app/backups/${BACKUP_FILE}"; then
+# Сначала устанавливаем необходимые пакеты и затем запускаем восстановление
+if docker-compose run --rm --entrypoint /bin/sh backup -c "apk add --no-cache openssl bash > /dev/null 2>&1 && /scripts/restore_db.sh /app/backups/${BACKUP_FILE}" 2>/dev/null || \
+   sudo docker-compose run --rm --entrypoint /bin/sh backup -c "apk add --no-cache openssl bash > /dev/null 2>&1 && /scripts/restore_db.sh /app/backups/${BACKUP_FILE}"; then
     echo ""
     echo "   ✅ База данных восстановлена"
 else
