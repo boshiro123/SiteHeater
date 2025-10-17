@@ -125,7 +125,10 @@ cd "${PROJECT_DIR}"
 
 # Копируем бэкап в Docker volume
 echo "2️⃣ Импорт бэкапа в Docker volume..."
-docker-compose run --rm -v "${PROJECT_DIR}/${BACKUP_FILE}:/tmp/${BACKUP_FILE}" backup sh -c "cp /tmp/${BACKUP_FILE} /app/backups/${BACKUP_FILE}"
+
+# Используем простой alpine контейнер для копирования в volume
+docker run --rm -v siteheater_backup_data:/app/backups -v "${PROJECT_DIR}/${BACKUP_FILE}:/tmp/${BACKUP_FILE}" alpine cp /tmp/${BACKUP_FILE} /app/backups/${BACKUP_FILE}
+
 echo "   ✅ Бэкап импортирован"
 echo ""
 
