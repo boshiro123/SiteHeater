@@ -44,8 +44,6 @@ services:
       TECHNICAL_CHANNEL_ID: ${TECHNICAL_CHANNEL_ID}
     networks:
       - siteheater_network
-    volumes:
-      - ./app:/app/app
     command: python -m app.main
 
   # pgAdmin - Web GUI for PostgreSQL
