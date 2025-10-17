@@ -127,14 +127,20 @@ cd "${PROJECT_DIR}"
 echo "2️⃣ Импорт бэкапа в Docker volume..."
 
 # Используем простой alpine контейнер для копирования в volume
-docker run --rm -v siteheater_backup_data:/app/backups -v "${PROJECT_DIR}/${BACKUP_FILE}:/tmp/${BACKUP_FILE}" alpine cp /tmp/${BACKUP_FILE} /app/backups/${BACKUP_FILE}
+if ! docker run --rm -v siteheater_backup_data:/app/backups -v "${PROJECT_DIR}/${BACKUP_FILE}:/tmp/${BACKUP_FILE}" alpine cp /tmp/${BACKUP_FILE} /app/backups/${BACKUP_FILE} 2>/dev/null; then
+    echo "   ⚠️  Требуются права sudo..."
+    sudo docker run --rm -v siteheater_backup_data:/app/backups -v "${PROJECT_DIR}/${BACKUP_FILE}:/tmp/${BACKUP_FILE}" alpine cp /tmp/${BACKUP_FILE} /app/backups/${BACKUP_FILE}
+fi
 
 echo "   ✅ Бэкап импортирован"
 echo ""
 
 # Остановка приложения
 echo "3️⃣ Остановка приложения..."
-docker-compose stop app
+if ! docker-compose stop app 2>/dev/null; then
+    echo "   ⚠️  Требуются права sudo..."
+    sudo docker-compose stop app
+fi
 echo "   ✅ Приложение остановлено"
 echo ""
 
@@ -142,7 +148,9 @@ echo ""
 echo "4️⃣ Восстановление базы данных..."
 echo ""
 
-if docker-compose run --rm backup /bin/bash /scripts/restore_db.sh "/app/backups/${BACKUP_FILE}"; then
+# Пробуем без sudo, потом с sudo если не получилось
+if docker-compose run --rm backup /bin/bash /scripts/restore_db.sh "/app/backups/${BACKUP_FILE}" 2>/dev/null || \
+   sudo docker-compose run --rm backup /bin/bash /scripts/restore_db.sh "/app/backups/${BACKUP_FILE}"; then
     echo ""
     echo "   ✅ База данных восстановлена"
 else
@@ -159,7 +167,10 @@ rm -f "${PROJECT_DIR}/${BACKUP_FILE}"
 
 # Запуск приложения
 echo "5️⃣ Запуск приложения..."
-docker-compose start app
+if ! docker-compose start app 2>/dev/null; then
+    echo "   ⚠️  Требуются права sudo..."
+    sudo docker-compose start app
+fi
 echo "   ✅ Приложение запущено"
 echo ""
 
