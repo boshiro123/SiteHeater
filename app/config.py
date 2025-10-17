@@ -28,6 +28,10 @@ class Config:
     WARMER_REQUEST_TIMEOUT: int = int(os.getenv("WARMER_REQUEST_TIMEOUT", "30"))
     WARMER_CHUNK_SIZE: int = int(os.getenv("WARMER_CHUNK_SIZE", "400"))  # Размер части для разбиения больших доменов
     
+    # Задержка между доменами для SaaS платформ (секунды, 0 = выключить)
+    WARMER_DOMAIN_DELAY_MIN: int = int(os.getenv("WARMER_DOMAIN_DELAY_MIN", "0"))
+    WARMER_DOMAIN_DELAY_MAX: int = int(os.getenv("WARMER_DOMAIN_DELAY_MAX", "60"))
+    
     # Logging
     LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
     

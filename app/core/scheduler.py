@@ -3,6 +3,7 @@
 """
 import asyncio
 import logging
+import random
 from typing import Dict, Optional, TYPE_CHECKING
 from datetime import datetime
 
@@ -99,7 +100,14 @@ class WarmingScheduler:
     async def warm_domain_task(self, domain_id: int, job_id: int) -> None:
         """Задача прогрева домена"""
         try:
-            logger.info(f"⏰ Scheduled warming task for domain_id={domain_id}")
+            # Добавляем случайную задержку между доменами (настраивается в .env)
+            # Чтобы не все домены прогревались одновременно на SaaS платформах
+            if config.WARMER_DOMAIN_DELAY_MAX > 0:
+                delay = random.uniform(config.WARMER_DOMAIN_DELAY_MIN, config.WARMER_DOMAIN_DELAY_MAX)
+                logger.info(f"⏰ Scheduled warming task for domain_id={domain_id}, waiting {delay:.1f}s to avoid platform overload")
+                await asyncio.sleep(delay)
+            else:
+                logger.info(f"⏰ Scheduled warming task for domain_id={domain_id} (no delay)")
             
             # Получаем домен с URL
             domain = await db_manager.get_domain_by_id(domain_id)
@@ -232,8 +240,16 @@ class WarmingScheduler:
         except Exception as e:
             logger.error(f"Error sending notifications: {e}", exc_info=True)
     
-    def add_job(self, domain_id: int, job_id: int, schedule: str) -> bool:
-        """Добавление задачи в планировщик"""
+    def add_job(self, domain_id: int, job_id: int, schedule: str, start_delay: int = 0) -> bool:
+        """
+        Добавление задачи в планировщик
+        
+        Args:
+            domain_id: ID домена
+            job_id: ID задачи
+            schedule: Расписание (например, "10m")
+            start_delay: Задержка первого запуска в секундах (для умного распределения при старте)
+        """
         try:
             # Удаляем старую задачу, если есть
             self.remove_job(domain_id)
@@ -245,20 +261,34 @@ class WarmingScheduler:
                 logger.error(f"Failed to parse schedule: {schedule}")
                 return False
             
-            # Добавляем задачу
+            # Создаем триггер
             trigger = IntervalTrigger(**interval_params)
             
-            apscheduler_job = self.scheduler.add_job(
-                self.warm_domain_task,
-                trigger=trigger,
-                args=[domain_id, job_id],
-                id=f"warm_domain_{domain_id}",
-                replace_existing=True,
-            )
+            # Если задана стартовая задержка, планируем первый запуск через указанное время
+            import datetime as dt
+            if start_delay > 0:
+                start_date = datetime.now() + dt.timedelta(seconds=start_delay)
+                apscheduler_job = self.scheduler.add_job(
+                    self.warm_domain_task,
+                    trigger=trigger,
+                    args=[domain_id, job_id],
+                    id=f"warm_domain_{domain_id}",
+                    replace_existing=True,
+                    next_run_time=start_date  # Первый запуск через start_delay секунд
+                )
+                logger.info(f"✅ Added scheduled job for domain {domain_id}: {schedule} (starts in {start_delay}s)")
+            else:
+                # Обычный запуск без задержки
+                apscheduler_job = self.scheduler.add_job(
+                    self.warm_domain_task,
+                    trigger=trigger,
+                    args=[domain_id, job_id],
+                    id=f"warm_domain_{domain_id}",
+                    replace_existing=True,
+                )
+                logger.info(f"✅ Added scheduled job for domain {domain_id}: {schedule}")
             
             self.job_map[domain_id] = apscheduler_job.id
-            
-            logger.info(f"✅ Added scheduled job for domain {domain_id}: {schedule}")
             return True
             
         except Exception as e:
@@ -280,22 +310,78 @@ class WarmingScheduler:
             return False
     
     async def reload_jobs(self) -> None:
-        """Перезагрузка всех активных задач из базы"""
+        """
+        Перезагрузка всех активных задач из базы с умным распределением
+        Домены запускаются с задержкой в зависимости от размера
+        """
         logger.info("Reloading scheduled jobs from database...")
         
         try:
             active_jobs = await db_manager.get_active_jobs()
             
+            if not active_jobs:
+                logger.info("No active jobs to reload")
+                return
+            
             # Очищаем все текущие задачи
             for domain_id in list(self.job_map.keys()):
                 self.remove_job(domain_id)
             
-            # Добавляем активные задачи
+            # Получаем домены с количеством URL для сортировки
+            domains_info = []
             for job in active_jobs:
                 if job.schedule:
-                    self.add_job(job.domain_id, job.id, job.schedule)
+                    domain = await db_manager.get_domain_by_id(job.domain_id)
+                    if domain:
+                        url_count = len(domain.urls) if domain.urls else 0
+                        domains_info.append({
+                            'job': job,
+                            'domain_id': job.domain_id,
+                            'domain_name': domain.name,
+                            'url_count': url_count
+                        })
             
-            logger.info(f"✅ Reloaded {len(active_jobs)} scheduled jobs")
+            # Сортируем: сначала маленькие домены, потом большие
+            domains_info.sort(key=lambda x: x['url_count'])
+            
+            # Рассчитываем задержку для каждого домена
+            # Разбиваем домены на группы по размеру
+            total_domains = len(domains_info)
+            
+            logger.info(f"📊 Scheduling {total_domains} domains by size:")
+            for i, info in enumerate(domains_info):
+                # Задержка увеличивается для каждого следующего домена
+                # Маленькие домены (0-50 URL) - стартуют быстрее
+                # Средние домены (50-200 URL) - средняя задержка
+                # Большие домены (>200 URL) - большая задержка
+                
+                url_count = info['url_count']
+                
+                # Базовая задержка на основе позиции в очереди
+                base_delay = i * 15  # 15 секунд между каждым доменом
+                
+                # Дополнительная задержка на основе размера
+                if url_count > 500:
+                    size_delay = 60  # Очень большой домен - дополнительная минута
+                elif url_count > 200:
+                    size_delay = 30  # Большой домен - дополнительно 30 сек
+                elif url_count > 50:
+                    size_delay = 15  # Средний домен - дополнительно 15 сек
+                else:
+                    size_delay = 0   # Маленький домен - без дополнительной задержки
+                
+                total_delay = base_delay + size_delay
+                
+                # Добавляем задачу с учетом стартовой задержки
+                job = info['job']
+                self.add_job(job.domain_id, job.id, job.schedule, start_delay=total_delay)
+                
+                logger.info(
+                    f"  {i+1}. {info['domain_name']}: {url_count} URLs → "
+                    f"start in {total_delay}s (base: {base_delay}s + size: {size_delay}s)"
+                )
+            
+            logger.info(f"✅ Reloaded {len(domains_info)} scheduled jobs with smart distribution")
             
         except Exception as e:
             logger.error(f"Error reloading jobs: {e}", exc_info=True)
