@@ -493,6 +493,29 @@ class DatabaseManager:
                 select(PendingClient).order_by(PendingClient.created_at.desc())
             )
             return list(result.scalars().all())
+    
+    async def delete_urls_by_domain(self, domain_id: int, urls_to_delete: List[str]) -> None:
+        """Удаление URL по домену"""
+        async with self.async_session() as session:
+            from app.models.domain import URL
+            
+            await session.execute(
+                delete(URL).where(
+                    (URL.domain_id == domain_id) & (URL.url.in_(urls_to_delete))
+                )
+            )
+            await session.commit()
+            logger.info(f"Deleted {len(urls_to_delete)} URLs from domain {domain_id}")
+    
+    async def add_urls_to_domain(self, domain_id: int, urls_to_add: List[str]) -> None:
+        """Добавление новых URL к домену"""
+        async with self.async_session() as session:
+            from app.models.domain import URL
+            
+            url_objects = [URL(domain_id=domain_id, url=url) for url in urls_to_add]
+            session.add_all(url_objects)
+            await session.commit()
+            logger.info(f"Added {len(urls_to_add)} URLs to domain {domain_id}")
 
 
 # Глобальный экземпляр

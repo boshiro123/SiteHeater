@@ -51,12 +51,11 @@ class SiteHeaterApp:
     async def setup_bot_commands(self):
         """Установка команд бота (меню команд)"""
         try:
-            # Команды для всех пользователей (базовые)
+            # Команды для всех пользователей (базовые, для клиентов)
             default_commands = [
                 BotCommand(command="start", description="🚀 Запустить бота"),
+                BotCommand(command="domains", description="🌐 Мои сайты"),
                 BotCommand(command="help", description="❓ Справка"),
-                BotCommand(command="domains", description="🌐 Мои домены"),
-                BotCommand(command="status", description="📊 Статус прогревов"),
             ]
             
             # Команды для администраторов (дополнительные)

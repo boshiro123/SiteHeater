@@ -14,6 +14,7 @@ from app.core.db import db_manager
 from app.core.warmer import warmer
 from app.core.reports import report_generator
 from app.utils.url_grouper import url_grouper
+from app.utils.sitemap import sitemap_parser
 
 if TYPE_CHECKING:
     from aiogram import Bot
@@ -47,7 +48,18 @@ class WarmingScheduler:
             id='daily_reports',
             replace_existing=True
         )
-        logger.info("Scheduler started with daily reports at 06:00 UTC (09:00 Minsk)")
+        
+        # Добавляем задачу для обновления URL (в 3:00 UTC = 6:00 UTC+3 Минск - ночью)
+        self.scheduler.add_job(
+            self.update_domains_urls_task,
+            trigger='cron',
+            hour=3,
+            minute=0,
+            id='update_urls',
+            replace_existing=True
+        )
+        
+        logger.info("Scheduler started with daily reports at 06:00 UTC and URL updates at 03:00 UTC")
 
     
     def shutdown(self) -> None:
@@ -149,7 +161,13 @@ class WarmingScheduler:
             logger.error(f"Error in scheduled warming task for domain {domain_id}: {e}", exc_info=True)
     
     async def _send_warming_notification(self, domain, stats: Dict) -> None:
-        """Отправка уведомления о прогреве ВСЕМ активным пользователям"""
+        """Отправка уведомления о прогреве (только если включено в настройках)"""
+        
+        # Проверяем, включены ли уведомления
+        if not config.SEND_WARMING_NOTIFICATIONS:
+            logger.debug(f"Warming notifications disabled, skipping for domain {domain.name}")
+            return
+        
         try:
             success_rate = (stats["success"] / stats["total_requests"] * 100) if stats["total_requests"] > 0 else 0
             
@@ -161,6 +179,7 @@ class WarmingScheduler:
             else:
                 status_emoji = "❌"
             
+            # 3. Убрать "общее время" из отчета
             message = (
                 f"{status_emoji} <b>Автопрогрев завершен</b>\n\n"
                 f"🌐 Домен: <b>{domain.name}</b>\n"
@@ -170,27 +189,37 @@ class WarmingScheduler:
                 f"• ✅ Успешно: <b>{stats['success']}</b> ({success_rate:.1f}%)\n"
                 f"• ⏱ Таймауты: <b>{stats['timeout']}</b>\n"
                 f"• ❌ Ошибки: <b>{stats['error']}</b>\n"
-                f"• ⏱ Среднее время: <b>{stats['avg_time']:.2f}s</b>\n"
-                f"• ⏱ Общее время: <b>{stats['total_time']:.2f}s</b>"
+                f"• ⏱ Среднее время: <b>{stats['avg_time']:.2f}s</b>"
             )
             
-            # Получаем всех активных пользователей
-            users = await db_manager.get_all_active_users()
-            
-            # Отправляем уведомление каждому пользователю
-            sent_count = 0
-            for user in users:
+            # Если указан технический канал - отправляем туда
+            if config.TECHNICAL_CHANNEL_ID:
                 try:
                     await self.bot.send_message(
-                        chat_id=user.id,
+                        chat_id=config.TECHNICAL_CHANNEL_ID,
                         text=message,
                         parse_mode="HTML"
                     )
-                    sent_count += 1
+                    logger.info(f"📤 Notification sent to technical channel for domain {domain.name}")
                 except Exception as e:
-                    logger.warning(f"Failed to send notification to user {user.id}: {e}")
-            
-            logger.info(f"📤 Notification sent to {sent_count}/{len(users)} users for domain {domain.name}")
+                    logger.error(f"Failed to send notification to technical channel: {e}")
+            else:
+                # Иначе отправляем администраторам (старое поведение)
+                admins = await db_manager.get_all_admins()
+                
+                sent_count = 0
+                for admin in admins:
+                    try:
+                        await self.bot.send_message(
+                            chat_id=admin.id,
+                            text=message,
+                            parse_mode="HTML"
+                        )
+                        sent_count += 1
+                    except Exception as e:
+                        logger.warning(f"Failed to send notification to admin {admin.id}: {e}")
+                
+                logger.info(f"📤 Notification sent to {sent_count}/{len(admins)} admins for domain {domain.name}")
             
         except Exception as e:
             logger.error(f"Error sending notifications: {e}", exc_info=True)
@@ -271,6 +300,80 @@ class WarmingScheduler:
         
         logger.info("Sending daily reports...")
         await report_generator.send_daily_reports(self.bot)
+    
+    async def update_domains_urls_task(self) -> None:
+        """Задача для автоматического обновления URL всех доменов"""
+        logger.info("🔄 Starting automatic URL update for all domains...")
+        
+        try:
+            # Получаем все активные домены
+            domains = await db_manager.get_all_domains()
+            
+            if not domains:
+                logger.info("No domains to update")
+                return
+            
+            updated_count = 0
+            errors_count = 0
+            
+            for domain in domains:
+                try:
+                    logger.info(f"Updating URLs for domain: {domain.name}")
+                    
+                    # Получаем новые URL
+                    new_urls = await sitemap_parser.discover_urls(domain.name)
+                    
+                    if not new_urls:
+                        logger.warning(f"No URLs found for {domain.name}")
+                        continue
+                    
+                    # Получаем старые URL
+                    old_urls = set(url.url for url in domain.urls)
+                    new_urls_set = set(new_urls)
+                    
+                    # Находим новые URL (которых не было раньше)
+                    added_urls = new_urls_set - old_urls
+                    # Находим удаленные URL (которые были, но больше нет)
+                    removed_urls = old_urls - new_urls_set
+                    
+                    # Удаляем старые URL
+                    if removed_urls:
+                        await db_manager.delete_urls_by_domain(domain.id, list(removed_urls))
+                        logger.info(f"Removed {len(removed_urls)} URLs from {domain.name}")
+                    
+                    # Добавляем новые URL
+                    if added_urls:
+                        await db_manager.add_urls_to_domain(domain.id, list(added_urls))
+                        logger.info(f"Added {len(added_urls)} new URLs to {domain.name}")
+                    
+                    updated_count += 1
+                    
+                    # Отправляем уведомление админам если были значительные изменения
+                    if self.bot and (len(added_urls) > 10 or len(removed_urls) > 10):
+                        admins = await db_manager.get_all_admins()
+                        
+                        message = (
+                            f"📊 <b>Обновление URL</b>\n\n"
+                            f"🌐 Домен: <b>{domain.name}</b>\n"
+                            f"➕ Добавлено: <b>{len(added_urls)}</b> URL\n"
+                            f"➖ Удалено: <b>{len(removed_urls)}</b> URL\n"
+                            f"📄 Всего: <b>{len(new_urls_set)}</b> URL"
+                        )
+                        
+                        for admin in admins:
+                            try:
+                                await self.bot.send_message(admin.id, message, parse_mode="HTML")
+                            except Exception as e:
+                                logger.warning(f"Failed to send update notification to admin {admin.id}: {e}")
+                    
+                except Exception as e:
+                    logger.error(f"Error updating URLs for domain {domain.name}: {e}", exc_info=True)
+                    errors_count += 1
+            
+            logger.info(f"✅ URL update completed: {updated_count} domains updated, {errors_count} errors")
+            
+        except Exception as e:
+            logger.error(f"Error in URL update task: {e}", exc_info=True)
 
 
 # Глобальный экземпляр

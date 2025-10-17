@@ -34,6 +34,11 @@ class Config:
     # Notifications
     SEND_WARMING_NOTIFICATIONS: bool = os.getenv("SEND_WARMING_NOTIFICATIONS", "true").lower() == "true"
     
+    # Technical channel for detailed warming reports (optional)
+    # If set, warming notifications will be sent to this channel instead of admins
+    # Example: -1001234567890 (channel ID)
+    TECHNICAL_CHANNEL_ID: Optional[str] = os.getenv("TECHNICAL_CHANNEL_ID", None)
+    
     @classmethod
     def validate(cls) -> None:
         """Валидация конфигурации"""

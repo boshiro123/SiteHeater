@@ -45,20 +45,22 @@ async def cmd_domains(message: Message):
     if user.role == "admin":
         domains = await db_manager.get_all_domains(user_id=None)
         title = "Все домены"
+        subtitle = "Выберите домен для управления:"
     else:
         domains = await db_manager.get_domains_by_client(user.id)
-        title = "Ваши домены"
+        title = "Ваши сайты"
+        subtitle = "Выберите сайт для просмотра информации:"
     
     if not domains:
         await message.answer(
-            f"📭 {'Пока нет доменов' if user.role == 'admin' else 'У вас пока нет доменов'}.\n\n"
-            f"{'Используйте /add для добавления домена.' if user.role == 'admin' else 'Обратитесь к администратору для добавления доменов.'}"
+            f"📭 {'Пока нет доменов' if user.role == 'admin' else 'У вас пока нет сайтов'}.\n\n"
+            f"{'Используйте /add для добавления домена.' if user.role == 'admin' else 'Обратитесь к администратору для подключения ваших сайтов.'}"
         )
         return
     
     await message.answer(
         f"📋 <b>{title} ({len(domains)}):</b>\n\n"
-        f"Выберите домен для управления:",
+        f"{subtitle}",
         parse_mode="HTML",
         reply_markup=get_domains_keyboard(domains)
     )
@@ -81,9 +83,11 @@ async def callback_back_to_domains(callback: CallbackQuery):
     if user.role == "admin":
         domains = await db_manager.get_all_domains(user_id=None)
         title = "Все домены"
+        subtitle = "Выберите домен для управления:"
     else:
         domains = await db_manager.get_domains_by_client(user.id)
-        title = "Ваши домены"
+        title = "Ваши сайты"
+        subtitle = "Выберите сайт для просмотра информации:"
     
     if not domains:
         await callback.message.edit_text("📭 Нет доменов.")
@@ -91,7 +95,7 @@ async def callback_back_to_domains(callback: CallbackQuery):
     
     await callback.message.edit_text(
         f"📋 <b>{title} ({len(domains)}):</b>\n\n"
-        f"Выберите домен для управления:",
+        f"{subtitle}",
         parse_mode="HTML",
         reply_markup=get_domains_keyboard(domains)
     )
@@ -109,35 +113,75 @@ async def callback_domain_info(callback: CallbackQuery):
         await callback.message.edit_text("❌ Домен не найден.")
         return
     
+    # Получаем роль пользователя
+    user = await db_manager.register_user(
+        user_id=callback.from_user.id,
+        username=callback.from_user.username,
+        first_name=callback.from_user.first_name,
+        last_name=callback.from_user.last_name
+    )
+    
     # Проверяем, есть ли активная задача
     has_active_job = any(job.active for job in domain.jobs)
     
     status_text = "🟢 Активен" if domain.is_active else "🔴 Неактивен"
     urls_count = len(domain.urls)
     
+    # Информация о клиенте (для админов)
+    client_info = ""
+    if user.role == "admin" and domain.client_id:
+        client = await db_manager.get_user_by_id(domain.client_id)
+        if client:
+            client_name = f"{client.first_name} {client.last_name}".strip() if client.first_name else f"@{client.username}" if client.username else f"ID: {client.id}"
+            client_info = f"\n👤 Клиент: <b>{client_name}</b>"
+            if client.phone:
+                client_info += f"\n📱 Телефон: {client.phone}"
+    
+    # Информация о расписании и группе URL
     job_info = ""
     if has_active_job:
         active_job = next((job for job in domain.jobs if job.active), None)
         if active_job:
-            job_info = f"\n⏰ Расписание: <b>{active_job.schedule}</b>"
+            # Группа URL
+            group_names = {1: "Только главная", 2: "Основные страницы", 3: "Все страницы"}
+            group_name = group_names.get(active_job.active_url_group, "Не указано")
+            
+            job_info = f"\n⏰ Автопрогрев: <b>каждые {active_job.schedule}</b>"
+            job_info += f"\n📋 Группа URL: <b>{group_name}</b>"
+            
             if active_job.last_run:
-                job_info += f"\n🕒 Последний запуск: {active_job.last_run.strftime('%Y-%m-%d %H:%M')}"
+                job_info += f"\n🕒 Последний прогрев: {active_job.last_run.strftime('%Y-%m-%d %H:%M')}"
     
-    text = (
-        f"🌐 <b>{domain.name}</b>\n\n"
-        f"Статус: {status_text}\n"
-        f"📊 Страниц: <b>{urls_count}</b>\n"
-        f"📅 Добавлен: {domain.created_at.strftime('%Y-%m-%d %H:%M')}"
-        f"{job_info}\n\n"
-        f"Выберите действие:"
-    )
+    # Для клиентов - упрощенный вид без упоминания "прогрева"
+    if user.role == "client":
+        text = (
+            f"🌐 <b>{domain.name}</b>\n\n"
+            f"Статус: {status_text}\n"
+            f"📊 Страниц: <b>{urls_count}</b>\n"
+            f"📅 Добавлен: {domain.created_at.strftime('%Y-%m-%d %H:%M')}"
+            f"{job_info}\n\n"
+            f"Каждое утро в 9:00 вы получаете отчет о работе сайта."
+        )
+        keyboard = None  # Только кнопка "Назад"
+    else:
+        # Для админов - полный функционал
+        text = (
+            f"🌐 <b>{domain.name}</b>\n\n"
+            f"Статус: {status_text}\n"
+            f"📊 Страниц: <b>{urls_count}</b>\n"
+            f"📅 Добавлен: {domain.created_at.strftime('%Y-%m-%d %H:%M')}"
+            f"{client_info}"
+            f"{job_info}\n\n"
+            f"Выберите действие:"
+        )
+        keyboard = get_domain_actions_keyboard(domain_id, has_active_job)
     
     # Безопасное редактирование сообщения
     try:
         await callback.message.edit_text(
             text,
             parse_mode="HTML",
-            reply_markup=get_domain_actions_keyboard(domain_id, has_active_job)
+            reply_markup=keyboard
         )
     except Exception:
         # Если не получилось отредактировать, удаляем старое и отправляем новое
@@ -148,7 +192,7 @@ async def callback_domain_info(callback: CallbackQuery):
         await callback.message.answer(
             text,
             parse_mode="HTML",
-            reply_markup=get_domain_actions_keyboard(domain_id, has_active_job)
+            reply_markup=keyboard
         )
 
 

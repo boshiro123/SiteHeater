@@ -139,8 +139,7 @@ class WarmingManager:
                 f"• ✅ Успешно: <b>{stats['success']}</b> ({success_rate:.1f}%)\n"
                 f"• ⏱ Таймауты: <b>{stats['timeout']}</b>\n"
                 f"• ❌ Ошибки: <b>{stats['error']}</b>\n"
-                f"• ⏱ Среднее время: <b>{stats['avg_time']:.2f}s</b>\n"
-                f"• ⏱ Общее время: <b>{stats['total_time']:.2f}s</b>"
+                f"• ⏱ Среднее время: <b>{stats['avg_time']:.2f}s</b>"
             )
             
             # Отправляем уведомление пользователю, запустившему прогрев

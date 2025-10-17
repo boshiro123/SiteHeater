@@ -93,7 +93,7 @@ class ReportGenerator:
         if not domains:
             return (
                 "📊 <b>Ваш ежедневный отчет</b>\n\n"
-                "У вас пока нет доменов в прогреве."
+                "У вас пока нет доменов в мониторинге."
             )
         
         # Период за последние сутки
@@ -123,7 +123,7 @@ class ReportGenerator:
                     'urls': len(domain.urls),
                     'avg_time': avg_time,
                     'success_rate': success_rate,
-                    'warmings': len(history)
+                    'checks': len(history)
                 })
             else:
                 domain_stats.append({
@@ -131,27 +131,41 @@ class ReportGenerator:
                     'urls': len(domain.urls),
                     'avg_time': 0,
                     'success_rate': 0,
-                    'warmings': 0
+                    'checks': 0
                 })
         
-        # Формируем отчет
+        # Формируем отчет для клиентов (без упоминания "прогрева")
         report = (
-            f"📊 <b>Ваш ежедневный отчет</b>\n"
+            f"📊 <b>Утренний отчет по вашим сайтам</b>\n"
             f"📅 {datetime.now().strftime('%d.%m.%Y')}\n\n"
-            f"🌐 <b>Доменов в прогреве:</b> {len(domains)}\n"
+            f"🌐 <b>Доменов в мониторинге:</b> {len(domains)}\n"
             f"📄 <b>Всего страниц:</b> {total_urls}\n\n"
         )
         
         for stat in domain_stats:
-            status_emoji = "✅" if stat['avg_time'] < 2.0 else "⚠️" if stat['avg_time'] < 4.0 else "❌"
+            # Определяем статус по скорости
+            if stat['avg_time'] == 0:
+                status_emoji = "🔵"
+                status_text = "Готовится к запуску"
+            elif stat['avg_time'] < 2.0:
+                status_emoji = "✅"
+                status_text = "Отлично"
+            elif stat['avg_time'] < 4.0:
+                status_emoji = "⚠️"
+                status_text = "Нормально"
+            else:
+                status_emoji = "❌"
+                status_text = "Медленно"
             
             report += (
                 f"{status_emoji} <b>{stat['name']}</b>\n"
+                f"   Статус: {status_text}\n"
                 f"   📄 Страниц: {stat['urls']}\n"
-                f"   ⏱ Ср. время: {stat['avg_time']:.2f}с\n"
-                f"   ✅ Успешность: {stat['success_rate']:.1f}%\n"
-                f"   🔥 Прогревов: {stat['warmings']}\n\n"
+                f"   ⏱ Среднее время загрузки: {stat['avg_time']:.2f}с\n"
+                f"   ✅ Доступность: {stat['success_rate']:.1f}%\n\n"
             )
+        
+        report += "\n💡 <i>Ваши сайты работают в оптимальном режиме</i>"
         
         return report
     
