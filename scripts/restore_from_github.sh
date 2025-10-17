@@ -148,9 +148,16 @@ echo ""
 echo "4️⃣ Восстановление базы данных..."
 echo ""
 
+# Проверяем что скрипт существует
+if [ ! -f "${PROJECT_DIR}/scripts/restore_db.sh" ]; then
+    echo "   ❌ Скрипт restore_db.sh не найден!"
+    rm -f "${PROJECT_DIR}/${BACKUP_FILE}"
+    exit 1
+fi
+
 # Пробуем без sudo, потом с sudo если не получилось
-if docker-compose run --rm backup /bin/bash /scripts/restore_db.sh "/app/backups/${BACKUP_FILE}" 2>/dev/null || \
-   sudo docker-compose run --rm backup /bin/bash /scripts/restore_db.sh "/app/backups/${BACKUP_FILE}"; then
+if docker-compose run --rm -v "${PROJECT_DIR}/scripts:/scripts:ro" backup sh /scripts/restore_db.sh "/app/backups/${BACKUP_FILE}" 2>/dev/null || \
+   sudo docker-compose run --rm -v "${PROJECT_DIR}/scripts:/scripts:ro" backup sh /scripts/restore_db.sh "/app/backups/${BACKUP_FILE}"; then
     echo ""
     echo "   ✅ База данных восстановлена"
 else
