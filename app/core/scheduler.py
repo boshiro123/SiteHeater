@@ -418,12 +418,37 @@ class WarmingScheduler:
                     new_urls = await sitemap_parser.discover_urls(domain.name)
                     
                     if not new_urls:
-                        logger.warning(f"No URLs found for {domain.name}")
+                        logger.warning(f"No URLs found for {domain.name}, skipping update")
                         continue
                     
                     # Получаем старые URL
                     old_urls = set(url.url for url in domain.urls)
                     new_urls_set = set(new_urls)
+                    
+                    logger.info(f"{domain.name}: Found {len(new_urls_set)} URLs (was {len(old_urls)})")
+                    
+                    # ЗАЩИТА: Если новых URL < 50% от старых - это ошибка парсинга, не обновляем
+                    if old_urls and len(new_urls_set) < len(old_urls) * 0.5:
+                        logger.error(
+                            f"❌ Suspicious URL drop for {domain.name}: "
+                            f"{len(old_urls)} → {len(new_urls_set)} (>50% loss). "
+                            f"Skipping update to prevent data loss."
+                        )
+                        if self.bot:
+                            admins = await db_manager.get_all_admins()
+                            error_msg = (
+                                f"⚠️ <b>Ошибка обновления URL</b>\n\n"
+                                f"🌐 Домен: <b>{domain.name}</b>\n"
+                                f"Было: {len(old_urls)} URL\n"
+                                f"Найдено: {len(new_urls_set)} URL\n\n"
+                                f"Потеря >50% URL - возможна ошибка парсинга.\n"
+                                f"Обновление отменено для безопасности."
+                            )
+                            for admin in admins:
+                                try:
+                                    await self.bot.send_message(admin.id, error_msg, parse_mode="HTML")
+                                except: pass
+                        continue
                     
                     # Находим новые URL (которых не было раньше)
                     added_urls = new_urls_set - old_urls

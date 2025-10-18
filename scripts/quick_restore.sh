@@ -17,13 +17,13 @@ echo "📋 Доступные бэкапы:"
 echo ""
 
 # Получаем список бэкапов
-BACKUPS=$(docker-compose run --rm backup ls -1 /app/backups/ 2>/dev/null | grep -E '\.sql\.gz(\.enc)?$' | sort -r || echo "")
+BACKUPS=$(docker-compose -f docker-compose.secure.yml run --rm backup ls -1 /app/backups/ 2>/dev/null | grep -E '\.sql\.gz(\.enc)?$' | sort -r || echo "")
 
 if [ -z "$BACKUPS" ]; then
     echo "❌ Бэкапы не найдены!"
     echo ""
     echo "Создайте бэкап командой:"
-    echo "  docker-compose run --rm backup"
+    echo "  docker-compose -f docker-compose.secure.yml run --rm backup"
     exit 1
 fi
 
@@ -66,7 +66,7 @@ echo ""
 
 # Остановка приложения
 echo "1️⃣ Остановка приложения..."
-docker-compose stop app
+docker-compose -f docker-compose.secure.yml stop app
 echo "   ✅ Приложение остановлено"
 echo ""
 
@@ -74,7 +74,7 @@ echo ""
 echo "2️⃣ Восстановление базы данных..."
 echo ""
 
-if docker-compose run --rm backup /bin/bash /scripts/restore_db.sh "/app/backups/${BACKUP_FILE}"; then
+if docker-compose -f docker-compose.secure.yml run --rm backup /bin/bash /scripts/restore_db.sh "/app/backups/${BACKUP_FILE}"; then
     echo ""
     echo "   ✅ База данных восстановлена"
 else
@@ -82,7 +82,7 @@ else
     echo "   ❌ Ошибка при восстановлении!"
     echo ""
     echo "Попробуйте восстановить вручную:"
-    echo "  docker-compose run --rm backup /bin/bash /scripts/restore_db.sh /app/backups/${BACKUP_FILE}"
+    echo "  docker-compose -f docker-compose.secure.yml run --rm backup /bin/bash /scripts/restore_db.sh /app/backups/${BACKUP_FILE}"
     exit 1
 fi
 
@@ -90,7 +90,7 @@ echo ""
 
 # Запуск приложения
 echo "3️⃣ Запуск приложения..."
-docker-compose start app
+docker-compose -f docker-compose.secure.yml start app
 echo "   ✅ Приложение запущено"
 echo ""
 
@@ -102,7 +102,7 @@ sleep 5
 echo ""
 echo "📊 Последние логи приложения:"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-docker-compose logs --tail=20 app
+docker-compose -f docker-compose.secure.yml logs --tail=20 app
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 
@@ -114,5 +114,5 @@ echo "  2. Отправьте /start"
 echo "  3. Проверьте список доменов: /domains"
 echo ""
 echo "Для просмотра полных логов:"
-echo "  docker-compose logs -f app"
+echo "  docker-compose -f docker-compose.secure.yml logs -f app"
 

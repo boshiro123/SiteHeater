@@ -63,7 +63,7 @@ echo "✅ Выбрано: ${DESCRIPTION}"
 echo ""
 
 # Создаем команду для cron
-CRON_COMMAND="${CRON_SCHEDULE} cd ${PROJECT_DIR} && /usr/bin/docker-compose run --rm backup >> ${LOG_FILE} 2>&1"
+CRON_COMMAND="${CRON_SCHEDULE} cd ${PROJECT_DIR} && /usr/bin/docker-compose -f docker-compose.secure.yml run --rm backup >> ${LOG_FILE} 2>&1"
 
 # Проверяем существует ли уже такая задача
 if crontab -l 2>/dev/null | grep -q "docker-compose run --rm backup"; then
@@ -94,7 +94,7 @@ echo "📊 Расписание: ${DESCRIPTION}"
 echo "📝 Логи будут сохраняться в: ${LOG_FILE}"
 echo ""
 echo "🧪 Для тестового запуска бэкапа выполните:"
-echo "   cd ${PROJECT_DIR} && docker-compose run --rm backup"
+echo "   cd ${PROJECT_DIR} && make backup"
 echo ""
 echo "📖 Для просмотра логов:"
 echo "   tail -f ${LOG_FILE}"

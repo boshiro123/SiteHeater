@@ -154,15 +154,19 @@ class SitemapParser:
         # Сначала пробуем sitemap
         sitemap_urls = await self.get_urls_from_sitemap(domain)
         all_urls.update(sitemap_urls)
+        logger.info(f"Found {len(sitemap_urls)} URLs from sitemap")
         
-        # Если в sitemap мало URL, дополняем краулингом
-        if len(sitemap_urls) < 10:
-            logger.info("Sitemap has few URLs, starting crawler...")
-            crawled_urls = await self.crawl_site(domain, max_depth=1, max_pages=30)
+        # Если в sitemap мало URL (меньше 100), дополняем краулингом
+        if len(sitemap_urls) < 100:
+            logger.info(f"Sitemap has {len(sitemap_urls)} URLs (< 100), starting crawler...")
+            crawled_urls = await self.crawl_site(domain, max_depth=2, max_pages=500)
             all_urls.update(crawled_urls)
+            logger.info(f"Crawler found {len(crawled_urls)} additional URLs")
+        else:
+            logger.info(f"Sitemap has enough URLs ({len(sitemap_urls)}), skipping crawler")
         
         result = sorted(list(all_urls))
-        logger.info(f"✅ Discovered {len(result)} unique URLs")
+        logger.info(f"✅ Discovered {len(result)} unique URLs total")
         
         return result
 
