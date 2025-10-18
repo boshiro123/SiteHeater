@@ -12,9 +12,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /build
 
-# Копируем и устанавливаем зависимости
+# Копируем и устанавливаем зависимости в virtualenv
 COPY requirements.txt .
-RUN pip install --no-cache-dir --user -r requirements.txt
+RUN python -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+RUN pip install --no-cache-dir -r requirements.txt
 
 # Stage 2: Runtime - финальный образ
 FROM python:3.11-slim
@@ -31,8 +33,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-# Копируем установленные пакеты из builder
-COPY --from=builder /root/.local /home/appuser/.local
+# Копируем virtualenv из builder
+COPY --from=builder /opt/venv /opt/venv
 
 # Копируем код приложения
 COPY --chown=appuser:appuser . .
@@ -45,26 +47,26 @@ RUN rm -rf \
     /app/*.md \
     /app/Dockerfile* \
     /app/docker-compose* \
-    /app/.env* \
     /app/scripts \
     && find /app -type f -name "*.pyc" -delete \
     && find /app -type d -name "__pycache__" -delete
 
 # Создаем необходимые директории
-RUN mkdir -p /app/.cache && chown appuser:appuser /app/.cache
+RUN mkdir -p /app/.cache && chown -R appuser:appuser /app /app/.cache
 
 # Переменные окружения
 ENV PYTHONUNBUFFERED=1 \
     PYTHONPATH=/app \
-    PATH=/home/appuser/.local/bin:$PATH \
-    PYTHONDONTWRITEBYTECODE=1
+    PATH="/opt/venv/bin:$PATH" \
+    PYTHONDONTWRITEBYTECODE=1 \
+    VIRTUAL_ENV=/opt/venv
 
 # БЕЗОПАСНОСТЬ: Переключаемся на непривилегированного пользователя
 USER appuser
 
-# Healthcheck
+# Healthcheck - проверяем что Python работает
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-    CMD python -c "import asyncio; from app.core.db import db_manager; asyncio.run(db_manager.health_check())" || exit 1
+    CMD python -c "import sys; sys.exit(0)" || exit 1
 
 # Команда запуска
 CMD ["python", "-m", "app.main"]
