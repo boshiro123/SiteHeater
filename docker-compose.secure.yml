@@ -24,16 +24,6 @@ services:
         tmpfs:
           size: 100M
 
-    # БЕЗОПАСНОСТЬ: Ограничение ресурсов (защита от майнеров)
-    deploy:
-      resources:
-        limits:
-          cpus: "1.0" # Максимум 1 ядро CPU
-          memory: 512M # Максимум 512MB RAM
-        reservations:
-          cpus: "0.25"
-          memory: 128M
-
     # БЕЗОПАСНОСТЬ: Убираем лишние привилегии
     cap_drop:
       - ALL
@@ -104,16 +94,6 @@ services:
     # БЕЗОПАСНОСТЬ: НЕТ монтирования кода!
     # volumes: НЕТ! Код упакован в образ при сборке
 
-    # БЕЗОПАСНОСТЬ: Ограничение ресурсов
-    deploy:
-      resources:
-        limits:
-          cpus: "2.0"
-          memory: 1G
-        reservations:
-          cpus: "0.5"
-          memory: 256M
-
     # БЕЗОПАСНОСТЬ: Убираем ВСЕ привилегии
     cap_drop:
       - ALL
@@ -159,13 +139,6 @@ services:
       # БЕЗОПАСНОСТЬ: Scripts монтируются READ-ONLY
       - ./scripts:/scripts:ro
       - backup_data:/app/backups
-
-    # БЕЗОПАСНОСТЬ: Ограничения для backup
-    deploy:
-      resources:
-        limits:
-          cpus: "0.5"
-          memory: 256M
 
     cap_drop:
       - ALL
