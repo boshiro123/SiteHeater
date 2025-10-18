@@ -1,0 +1,209 @@
+services:
+  # PostgreSQL Database - ПОЛНОСТЬЮ ИЗОЛИРОВАН
+  postgres:
+    image: postgres:15-alpine
+    container_name: siteheater_postgres
+    restart: unless-stopped
+
+    # БЕЗОПАСНОСТЬ: Не экспортируем порты наружу
+    # ports: НЕТ! БД доступна только внутри Docker сети
+
+    environment:
+      # Сложные пароли из .env
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-siteheater}
+      # Дополнительная безопасность PostgreSQL
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
+
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      # Read-only конфигурация для защиты
+      - type: tmpfs
+        target: /tmp
+        tmpfs:
+          size: 100M
+
+    # БЕЗОПАСНОСТЬ: Ограничение ресурсов (защита от майнеров)
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0" # Максимум 1 ядро CPU
+          memory: 512M # Максимум 512MB RAM
+        reservations:
+          cpus: "0.25"
+          memory: 128M
+
+    # БЕЗОПАСНОСТЬ: Убираем лишние привилегии
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETUID
+      - SETGID
+      - DAC_OVERRIDE
+
+    security_opt:
+      - no-new-privileges:true
+      - seccomp:unconfined # PostgreSQL требует некоторых syscalls
+
+    # Read-only root filesystem (кроме /var/lib/postgresql/data)
+    read_only: false # PostgreSQL требует запись в /tmp и /run
+    tmpfs:
+      - /tmp
+      - /run/postgresql
+
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-siteheater}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+    networks:
+      - db_network # Только внутренняя сеть с приложением
+
+    # Дополнительная защита PostgreSQL через command
+    command: >
+      postgres
+      -c max_connections=20
+      -c shared_buffers=128MB
+      -c log_connections=on
+      -c log_disconnections=on
+      -c log_duration=on
+      -c log_line_prefix='%t [%p]: user=%u,db=%d,app=%a,client=%h '
+
+  # SiteHeater Application
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.secure
+    container_name: siteheater_app
+    restart: unless-stopped
+
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+    environment:
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      # Все остальные переменные из .env
+      WARMER_CONCURRENCY: ${WARMER_CONCURRENCY:-5}
+      WARMER_MIN_DELAY: ${WARMER_MIN_DELAY:-0.5}
+      WARMER_MAX_DELAY: ${WARMER_MAX_DELAY:-2.0}
+      WARMER_REPEAT_COUNT: ${WARMER_REPEAT_COUNT:-2}
+      WARMER_REQUEST_TIMEOUT: ${WARMER_REQUEST_TIMEOUT:-30}
+      WARMER_CHUNK_SIZE: ${WARMER_CHUNK_SIZE:-400}
+      WARMER_DOMAIN_DELAY_MIN: ${WARMER_DOMAIN_DELAY_MIN:-0}
+      WARMER_DOMAIN_DELAY_MAX: ${WARMER_DOMAIN_DELAY_MAX:-60}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      SEND_WARMING_NOTIFICATIONS: ${SEND_WARMING_NOTIFICATIONS:-true}
+      TECHNICAL_CHANNEL_ID: ${TECHNICAL_CHANNEL_ID}
+
+    # БЕЗОПАСНОСТЬ: НЕТ монтирования кода!
+    # volumes: НЕТ! Код упакован в образ при сборке
+
+    # БЕЗОПАСНОСТЬ: Ограничение ресурсов
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 1G
+        reservations:
+          cpus: "0.5"
+          memory: 256M
+
+    # БЕЗОПАСНОСТЬ: Убираем ВСЕ привилегии
+    cap_drop:
+      - ALL
+
+    security_opt:
+      - no-new-privileges:true
+      - seccomp:unconfined
+
+    # ВАЖНО: Read-only filesystem для защиты
+    read_only: true
+    tmpfs:
+      - /tmp:size=100M,mode=1777
+      - /app/.cache:size=50M,uid=1000,gid=1000
+
+    networks:
+      - db_network # Для доступа к PostgreSQL
+      - internet # Для Telegram API
+
+    # Запуск от непривилегированного пользователя
+    user: "1000:1000"
+
+  # Database Backup Service
+  backup:
+    image: postgres:15-alpine
+    container_name: siteheater_backup
+    restart: "no"
+
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-siteheater}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-siteheater}
+      POSTGRES_HOST: postgres
+      BACKUP_GITHUB_REPO: ${BACKUP_GITHUB_REPO}
+      BACKUP_GITHUB_TOKEN: ${BACKUP_GITHUB_TOKEN}
+      BACKUP_GITHUB_BRANCH: ${BACKUP_GITHUB_BRANCH:-main}
+      BACKUP_ENCRYPTION_KEY: ${BACKUP_ENCRYPTION_KEY}
+
+    volumes:
+      # БЕЗОПАСНОСТЬ: Scripts монтируются READ-ONLY
+      - ./scripts:/scripts:ro
+      - backup_data:/app/backups
+
+    # БЕЗОПАСНОСТЬ: Ограничения для backup
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
+
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+
+    security_opt:
+      - no-new-privileges:true
+
+    networks:
+      - db_network
+      - internet # Для push в GitHub
+
+    entrypoint: /bin/sh
+    command: -c "apk add --no-cache git openssl bash && bash /scripts/backup_db.sh"
+
+volumes:
+  postgres_data:
+    driver: local
+  backup_data:
+    driver: local
+
+networks:
+  # БЕЗОПАСНОСТЬ: Две отдельные сети
+
+  # 1. Внутренняя сеть БД (ПОЛНОСТЬЮ ИЗОЛИРОВАНА от интернета)
+  db_network:
+    driver: bridge
+    internal: true # НЕТ доступа к интернету
+    ipam:
+      config:
+        - subnet: 172.20.0.0/24
+
+  # 2. Внешняя сеть (ТОЛЬКО для app и backup)
+  internet:
+    driver: bridge
+    # НЕ internal - есть доступ к интернету
+    ipam:
+      config:
+        - subnet: 172.21.0.0/24

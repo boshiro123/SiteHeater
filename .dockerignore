@@ -1,50 +1,77 @@
+# Git
+.git
+.gitignore
+.github
+
+# Docker
+Dockerfile*
+docker-compose*
+.dockerignore
+
 # Python
-__pycache__/
+__pycache__
 *.py[cod]
 *$py.class
 *.so
 .Python
-*.egg-info/
-dist/
-build/
+*.egg-info
+dist
+build
 
-# Virtual Environment
-venv/
-env/
-ENV/
+# Виртуальные окружения
+venv
+env
+ENV
 
 # IDE
-.vscode/
-.idea/
+.vscode
+.idea
 *.swp
+*.swo
+*~
 
-# Environment
-.env
+# Тесты
+tests
+.pytest_cache
+.coverage
+htmlcov
 
-# Git
-.git/
-.gitignore
-
-# Docker
-Dockerfile
-docker-compose.yml
-.dockerignore
-
-# Documentation
-README.md
+# Документация (не нужна в контейнере)
 *.md
+docs
 
-# Database
+# Конфигурационные файлы (загружаются через env vars)
+.env*
+*.env
+backup.env.example
+
+# Логи
+*.log
+logs
+
+# Базы данных (не нужны в образе)
 *.db
 *.sqlite
+*.sql
 
-# Logs
-*.log
+# Скрипты (не нужны в app контейнере)
+scripts
 
-# OS
-.DS_Store
-Thumbs.db
+# Временные файлы
+*.tmp
+tmp
+temp
 
-# Alembic versions (будут созданы в контейнере)
-alembic/versions/*.py
+# Backup данные
+backups
+backup_data
 
+# Alembic (миграции выполняются при запуске)
+# НЕ игнорируем - миграции нужны
+
+# Makefile
+Makefile
+
+# Другие ненужные файлы
+LICENSE
+.gitattributes
