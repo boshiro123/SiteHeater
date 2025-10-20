@@ -19,22 +19,10 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
-    # БЕЗОПАСНОСТЬ: Минимальные привилегии для PostgreSQL
-    cap_drop:
-      - ALL
-    cap_add:
-      - CHOWN
-      - SETUID
-      - SETGID
-      - DAC_OVERRIDE
-      - FOWNER
-      - FSETID
+    # БЕЗОПАСНОСТЬ: PostgreSQL работает в изолированной сети
+    # Capabilities не ограничиваются для корректной работы
 
-    # PostgreSQL требует возможность переключения пользователей
-    # no-new-privileges убран для корректной работы entrypoint
-
-    # Read-only root filesystem (кроме /var/lib/postgresql/data)
-    read_only: false # PostgreSQL требует запись в /tmp и /run
+    # Read-only root filesystem отключен - PostgreSQL требует запись
     tmpfs:
       - /tmp:size=100M
       - /run/postgresql
