@@ -70,3 +70,8 @@ README.md
 SETUP.md
 backup.env
 backup.env.example
+
+# Backups
+backups/*.sql.gz*
+backups/*.sql*
+!backups/.gitkeep

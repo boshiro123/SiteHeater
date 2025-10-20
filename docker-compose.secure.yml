@@ -114,7 +114,8 @@ services:
     volumes:
       # БЕЗОПАСНОСТЬ: Scripts монтируются READ-ONLY
       - ./scripts:/scripts:ro
-      - backup_data:/app/backups
+      # Бэкапы в корневой папке проекта
+      - ./backups:/app/backups
 
     # Backup требует полных прав для работы с БД и Git
     # Безопасность обеспечивается изоляцией сетей
@@ -128,8 +129,6 @@ services:
 
 volumes:
   postgres_data:
-    driver: local
-  backup_data:
     driver: local
 
 networks:

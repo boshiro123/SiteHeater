@@ -67,6 +67,7 @@ class SiteHeaterApp:
                 BotCommand(command="add_client", description="👥 Добавить клиента"),
                 BotCommand(command="clients", description="👥 Управление клиентами"),
                 BotCommand(command="status", description="📊 Статус прогревов"),
+                BotCommand(command="restore_backup", description="💾 Восстановить БД"),
             ]
             
             # Устанавливаем команды по умолчанию для всех пользователей

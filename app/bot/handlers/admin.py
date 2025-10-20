@@ -25,6 +25,12 @@ class AddClientStates(StatesGroup):
     waiting_for_identifier = State()
 
 
+class RestoreBackupStates(StatesGroup):
+    """Состояния для восстановления бэкапа"""
+    waiting_for_backup_selection = State()
+    waiting_for_confirmation = State()
+
+
 @router.message(Command("clients"))
 async def cmd_clients(message: Message):
     """Список всех клиентов"""
@@ -362,6 +368,201 @@ async def callback_link_domain(callback: CallbackQuery):
             parse_mode="HTML",
             reply_markup=get_back_keyboard()
         )
+
+
+@router.message(Command("restore_backup"))
+async def cmd_restore_backup(message: Message, state: FSMContext):
+    """Восстановление БД из бэкапа"""
+    try:
+        from pathlib import Path
+        import os
+        
+        # Получаем список бэкапов
+        backup_dir = Path("./backups")
+        
+        if not backup_dir.exists():
+            await message.answer(
+                "📂 Директория с бэкапами не найдена.\n\n"
+                "Создайте хотя бы один бэкап через /backup",
+                parse_mode="HTML"
+            )
+            return
+        
+        # Получаем все файлы бэкапов, отсортированные по дате (новые первые)
+        backups = sorted(
+            backup_dir.glob("siteheater_backup_*.sql.gz*"),
+            key=os.path.getmtime,
+            reverse=True
+        )
+        
+        if not backups:
+            await message.answer(
+                "📂 Бэкапы не найдены.\n\n"
+                "Создайте хотя бы один бэкап через /backup",
+                parse_mode="HTML"
+            )
+            return
+        
+        # Формируем список бэкапов
+        backup_list = []
+        for i, backup in enumerate(backups[:20], 1):  # Показываем последние 20
+            size_mb = backup.stat().st_size / (1024 * 1024)
+            mtime = datetime.fromtimestamp(backup.stat().st_mtime)
+            backup_list.append(
+                f"{i}. <code>{backup.name}</code>\n"
+                f"   📦 {size_mb:.2f} MB | 🕐 {mtime.strftime('%Y-%m-%d %H:%M:%S')}"
+            )
+        
+        # Сохраняем список бэкапов в state
+        await state.update_data(backups=[b.name for b in backups[:20]])
+        await state.set_state(RestoreBackupStates.waiting_for_backup_selection)
+        
+        await message.answer(
+            f"📂 <b>Доступные бэкапы</b> (последние 20):\n\n"
+            f"{''.join([f'{b}\n' for b in backup_list])}\n\n"
+            f"Введите номер бэкапа для восстановления (1-{len(backups[:20])}):",
+            parse_mode="HTML"
+        )
+        
+    except Exception as e:
+        logger.error(f"Error listing backups: {e}", exc_info=True)
+        await message.answer(f"❌ Ошибка при получении списка бэкапов:\n{str(e)}")
+
+
+@router.message(RestoreBackupStates.waiting_for_backup_selection)
+async def process_backup_selection(message: Message, state: FSMContext):
+    """Обработка выбора бэкапа"""
+    try:
+        # Получаем номер бэкапа
+        backup_number = int(message.text.strip())
+        
+        # Получаем список бэкапов из state
+        data = await state.get_data()
+        backups = data.get('backups', [])
+        
+        if backup_number < 1 or backup_number > len(backups):
+            await message.answer(
+                f"❌ Неверный номер. Введите число от 1 до {len(backups)}",
+                parse_mode="HTML"
+            )
+            return
+        
+        selected_backup = backups[backup_number - 1]
+        
+        # Сохраняем выбранный бэкап
+        await state.update_data(selected_backup=selected_backup)
+        await state.set_state(RestoreBackupStates.waiting_for_confirmation)
+        
+        await message.answer(
+            f"⚠️ <b>ВНИМАНИЕ!</b>\n\n"
+            f"Вы собираетесь восстановить БД из бэкапа:\n"
+            f"<code>{selected_backup}</code>\n\n"
+            f"❗️ ВСЕ ТЕКУЩИЕ ДАННЫЕ БУДУТ УДАЛЕНЫ!\n\n"
+            f"Для подтверждения введите: <b>YES</b>\n"
+            f"Для отмены введите: <b>NO</b>",
+            parse_mode="HTML"
+        )
+        
+    except ValueError:
+        await message.answer("❌ Введите корректный номер бэкапа")
+    except Exception as e:
+        logger.error(f"Error selecting backup: {e}", exc_info=True)
+        await message.answer(f"❌ Ошибка: {str(e)}")
+        await state.clear()
+
+
+@router.message(RestoreBackupStates.waiting_for_confirmation)
+async def process_restore_confirmation(message: Message, state: FSMContext):
+    """Обработка подтверждения восстановления"""
+    try:
+        confirmation = message.text.strip().upper()
+        
+        if confirmation == "NO":
+            await state.clear()
+            await message.answer("❌ Восстановление отменено")
+            return
+        
+        if confirmation != "YES":
+            await message.answer(
+                "⚠️ Введите <b>YES</b> для подтверждения или <b>NO</b> для отмены",
+                parse_mode="HTML"
+            )
+            return
+        
+        # Получаем выбранный бэкап
+        data = await state.get_data()
+        selected_backup = data.get('selected_backup')
+        
+        if not selected_backup:
+            await message.answer("❌ Ошибка: бэкап не выбран")
+            await state.clear()
+            return
+        
+        await message.answer(
+            "🔄 <b>Начинаю восстановление...</b>\n\n"
+            "⏳ Это может занять несколько минут.\n"
+            "Бот временно будет недоступен.",
+            parse_mode="HTML"
+        )
+        
+        # Выполняем восстановление
+        import subprocess
+        
+        result = subprocess.run(
+            [
+                "docker-compose", "-f", "docker-compose.secure.yml", "stop", "app"
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30
+        )
+        
+        result = subprocess.run(
+            [
+                "docker-compose", "-f", "docker-compose.secure.yml", "run", "--rm",
+                "--entrypoint", "/bin/sh",
+                "backup",
+                "-c", f"apk add --no-cache openssl bash && bash /scripts/restore_db.sh /app/backups/{selected_backup}"
+            ],
+            capture_output=True,
+            text=True,
+            timeout=300  # 5 минут
+        )
+        
+        # Перезапускаем приложение
+        subprocess.run(
+            ["docker-compose", "-f", "docker-compose.secure.yml", "start", "app"],
+            capture_output=True,
+            text=True,
+            timeout=30
+        )
+        
+        if result.returncode == 0:
+            await message.answer(
+                "✅ <b>Восстановление завершено!</b>\n\n"
+                f"📁 Восстановлено из: <code>{selected_backup}</code>\n\n"
+                "🔄 Бот перезапущен с восстановленными данными.",
+                parse_mode="HTML"
+            )
+            logger.info(f"Database restored from backup: {selected_backup}")
+        else:
+            await message.answer(
+                "❌ <b>Ошибка восстановления!</b>\n\n"
+                f"Проверьте логи сервера.\n\n"
+                f"Stderr: {result.stderr[:500]}",
+                parse_mode="HTML"
+            )
+            logger.error(f"Backup restore failed: {result.stderr}")
+        
+        await state.clear()
+        
+    except subprocess.TimeoutExpired:
+        await message.answer("❌ Превышен таймаут восстановления")
+        await state.clear()
+    except Exception as e:
+        logger.error(f"Error restoring backup: {e}", exc_info=True)
+        await message.answer(f"❌ Ошибка: {str(e)}")
+        await state.clear()
 
 
 # Экспортируем роутер
