@@ -30,8 +30,8 @@ services:
       - FOWNER
       - FSETID
 
-    security_opt:
-      - no-new-privileges:true
+    # PostgreSQL требует возможность переключения пользователей
+    # no-new-privileges убран для корректной работы entrypoint
 
     # Read-only root filesystem (кроме /var/lib/postgresql/data)
     read_only: false # PostgreSQL требует запись в /tmp и /run
