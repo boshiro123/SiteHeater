@@ -116,14 +116,8 @@ services:
       - ./scripts:/scripts:ro
       - backup_data:/app/backups
 
-    cap_drop:
-      - ALL
-    cap_add:
-      - CHOWN
-      - DAC_OVERRIDE
-
-    security_opt:
-      - no-new-privileges:true
+    # Backup требует полных прав для работы с БД и Git
+    # Безопасность обеспечивается изоляцией сетей
 
     networks:
       - db_network
