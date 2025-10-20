@@ -78,14 +78,6 @@ services:
     # БЕЗОПАСНОСТЬ: НЕТ монтирования кода!
     # volumes: НЕТ! Код упакован в образ при сборке
 
-    # БЕЗОПАСНОСТЬ: Убираем ВСЕ привилегии
-    cap_drop:
-      - ALL
-
-    security_opt:
-      - no-new-privileges:true
-      - seccomp:unconfined
-
     # ВАЖНО: Read-only filesystem для защиты
     read_only: true
     tmpfs:
