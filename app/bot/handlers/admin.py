@@ -2,6 +2,7 @@
 Обработчики команд для администраторов
 """
 import logging
+from datetime import datetime
 from aiogram import Router, F
 from aiogram.filters import Command
 from aiogram.types import Message, CallbackQuery
@@ -417,10 +418,13 @@ async def cmd_restore_backup(message: Message, state: FSMContext):
         await state.update_data(backups=[b.name for b in backups[:20]])
         await state.set_state(RestoreBackupStates.waiting_for_backup_selection)
         
+        backup_count = len(backups[:20])
+        backup_text = '\n'.join(backup_list)
+        
         await message.answer(
             f"📂 <b>Доступные бэкапы</b> (последние 20):\n\n"
-            f"{''.join([f'{b}\n' for b in backup_list])}\n\n"
-            f"Введите номер бэкапа для восстановления (1-{len(backups[:20])}):",
+            f"{backup_text}\n\n"
+            f"Введите номер бэкапа для восстановления (1-{backup_count}):",
             parse_mode="HTML"
         )
         
