@@ -18,11 +18,6 @@ services:
 
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      # Read-only конфигурация для защиты
-      - type: tmpfs
-        target: /tmp
-        tmpfs:
-          size: 100M
 
     # БЕЗОПАСНОСТЬ: Убираем лишние привилегии
     cap_drop:
@@ -40,7 +35,7 @@ services:
     # Read-only root filesystem (кроме /var/lib/postgresql/data)
     read_only: false # PostgreSQL требует запись в /tmp и /run
     tmpfs:
-      - /tmp
+      - /tmp:size=100M
       - /run/postgresql
 
     healthcheck:
