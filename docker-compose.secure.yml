@@ -19,7 +19,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
-    # БЕЗОПАСНОСТЬ: Убираем лишние привилегии
+    # БЕЗОПАСНОСТЬ: Минимальные привилегии для PostgreSQL
     cap_drop:
       - ALL
     cap_add:
@@ -27,10 +27,11 @@ services:
       - SETUID
       - SETGID
       - DAC_OVERRIDE
+      - FOWNER
+      - FSETID
 
     security_opt:
       - no-new-privileges:true
-      - seccomp:unconfined # PostgreSQL требует некоторых syscalls
 
     # Read-only root filesystem (кроме /var/lib/postgresql/data)
     read_only: false # PostgreSQL требует запись в /tmp и /run
