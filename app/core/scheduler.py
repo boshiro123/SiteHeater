@@ -60,7 +60,16 @@ class WarmingScheduler:
             replace_existing=True
         )
         
-        logger.info("Scheduler started with daily reports at 06:00 UTC and URL updates at 03:00 UTC")
+        # Добавляем задачу для автоматического бэкапа каждый час
+        self.scheduler.add_job(
+            self.auto_backup_task,
+            trigger='interval',
+            hours=1,
+            id='auto_backup',
+            replace_existing=True
+        )
+        
+        logger.info("Scheduler started with daily reports at 06:00 UTC, URL updates at 03:00 UTC, and hourly backups")
 
     
     def shutdown(self) -> None:
@@ -493,6 +502,122 @@ class WarmingScheduler:
             
         except Exception as e:
             logger.error(f"Error in URL update task: {e}", exc_info=True)
+    
+    async def auto_backup_task(self) -> None:
+        """Задача для автоматического бэкапа БД каждый час"""
+        if not self.bot:
+            logger.warning("Bot instance not set, skipping backup task")
+            return
+        
+        logger.info("💾 Starting automatic backup...")
+        
+        try:
+            import subprocess
+            from pathlib import Path
+            
+            # Создаем директорию для бэкапов если нет
+            backup_dir = Path("./backups")
+            backup_dir.mkdir(exist_ok=True)
+            
+            # Формируем имя файла бэкапа
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            backup_filename = f"siteheater_backup_{timestamp}.sql.gz.enc"
+            backup_path = backup_dir / backup_filename
+            
+            # Выполняем бэкап через docker
+            result = subprocess.run(
+                [
+                    "docker", "exec", "siteheater_postgres",
+                    "pg_dump", "-U", config.POSTGRES_USER, "-d", config.POSTGRES_DB
+                ],
+                capture_output=True,
+                text=True,
+                timeout=300  # 5 минут
+            )
+            
+            if result.returncode != 0:
+                raise Exception(f"pg_dump failed: {result.stderr}")
+            
+            # Сжимаем и шифруем бэкап
+            import gzip
+            
+            # Сначала сжимаем
+            compressed_path = backup_dir / f"siteheater_backup_{timestamp}.sql.gz"
+            with gzip.open(compressed_path, 'wb') as f:
+                f.write(result.stdout.encode('utf-8'))
+            
+            # Затем шифруем (если задан пароль)
+            if config.BACKUP_ENCRYPTION_PASSWORD:
+                subprocess.run(
+                    [
+                        "openssl", "enc", "-aes-256-cbc",
+                        "-salt", "-pbkdf2",
+                        "-in", str(compressed_path),
+                        "-out", str(backup_path),
+                        "-pass", f"pass:{config.BACKUP_ENCRYPTION_PASSWORD}"
+                    ],
+                    check=True,
+                    timeout=60
+                )
+                # Удаляем несжатый файл
+                compressed_path.unlink()
+            else:
+                # Если нет шифрования, переименовываем
+                backup_path = compressed_path
+                backup_filename = backup_path.name
+            
+            # Получаем размер файла
+            size_mb = backup_path.stat().st_size / (1024 * 1024)
+            
+            logger.info(f"✅ Backup created successfully: {backup_filename} ({size_mb:.2f} MB)")
+            
+            # Удаляем старые бэкапы (старше 7 дней)
+            import time
+            current_time = time.time()
+            for old_backup in backup_dir.glob("siteheater_backup_*.sql.gz*"):
+                if old_backup.stat().st_mtime < current_time - (7 * 24 * 60 * 60):
+                    old_backup.unlink()
+                    logger.info(f"🗑 Deleted old backup: {old_backup.name}")
+            
+            # Отправляем уведомление админам
+            admins = await db_manager.get_all_admins()
+            
+            message = (
+                f"💾 <b>Автоматический бэкап выполнен</b>\n\n"
+                f"📁 Файл: <code>{backup_filename}</code>\n"
+                f"📦 Размер: {size_mb:.2f} MB\n"
+                f"🕐 Время: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
+                f"✅ Бэкап сохранен локально"
+            )
+            
+            for admin in admins:
+                try:
+                    await self.bot.send_message(admin.id, message, parse_mode="HTML")
+                except Exception as e:
+                    logger.warning(f"Failed to send backup notification to admin {admin.id}: {e}")
+            
+            logger.info(f"📤 Backup notification sent to {len(admins)} admins")
+            
+        except subprocess.TimeoutExpired:
+            logger.error("❌ Backup timeout!")
+        except Exception as e:
+            logger.error(f"❌ Backup failed: {e}", exc_info=True)
+            
+            # Отправляем уведомление об ошибке админам
+            try:
+                admins = await db_manager.get_all_admins()
+                error_msg = (
+                    f"❌ <b>Ошибка автоматического бэкапа</b>\n\n"
+                    f"⚠️ {str(e)[:200]}\n\n"
+                    f"Проверьте логи сервера."
+                )
+                
+                for admin in admins:
+                    try:
+                        await self.bot.send_message(admin.id, error_msg, parse_mode="HTML")
+                    except: pass
+            except:
+                pass
 
 
 # Глобальный экземпляр

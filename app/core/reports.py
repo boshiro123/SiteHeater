@@ -7,6 +7,7 @@ from typing import List, Dict, Any
 
 from app.core.db import db_manager
 from app.models.domain import User, Domain, WarmingHistory
+from app.utils.url_grouper import url_grouper
 
 logger = logging.getLogger(__name__)
 
@@ -29,8 +30,12 @@ class ReportGenerator:
         end_time = datetime.utcnow()
         start_time = end_time - timedelta(days=1)
         
+        # Получаем активные задачи для определения количества URL в прогреве
+        active_jobs = await db_manager.get_active_jobs()
+        job_map = {job.domain_id: job for job in active_jobs}
+        
         total_domains = len(domains)
-        total_urls = sum(len(domain.urls) for domain in domains)
+        total_urls = 0  # Реально прогреваемые URL
         
         # Статистика по прогревам
         total_warmings = 0
@@ -39,17 +44,61 @@ class ReportGenerator:
         total_errors = 0
         avg_times = []
         
+        # Детальная статистика по каждому домену
+        domain_stats = []
+        
         for domain in domains:
             history = await db_manager.get_warming_history_by_period(
                 domain.id, start_time, end_time
             )
             
-            total_warmings += len(history)
+            # Получаем Job для домена чтобы узнать active_url_group
+            job = job_map.get(domain.id)
+            
+            # Определяем реальное количество URL в прогреве
+            all_urls = [url.url for url in domain.urls]
+            if job and job.active_url_group:
+                # Фильтруем URL по группе
+                warming_urls = url_grouper.filter_urls_by_group(all_urls, domain.name, job.active_url_group)
+                url_count = len(warming_urls)
+            else:
+                # Если нет Job - значит все URL
+                url_count = len(all_urls)
+            
+            total_urls += url_count
+            
+            # Статистика по домену
+            domain_warmings = len(history)
+            domain_requests = 0
+            domain_success = 0
+            domain_errors = 0
+            domain_avg_times = []
+            
             for h in history:
-                total_requests += h.total_requests
-                total_success += h.successful_requests
-                total_errors += h.failed_requests + h.timeout_requests
-                avg_times.append(h.avg_response_time)
+                domain_requests += h.total_requests
+                domain_success += h.successful_requests
+                domain_errors += h.failed_requests + h.timeout_requests
+                domain_avg_times.append(h.avg_response_time)
+            
+            domain_avg_time = sum(domain_avg_times) / len(domain_avg_times) if domain_avg_times else 0
+            
+            domain_stats.append({
+                'name': domain.name,
+                'url_count': url_count,
+                'avg_time': domain_avg_time,
+                'warmings': domain_warmings,
+                'requests': domain_requests,
+                'success': domain_success,
+                'errors': domain_errors
+            })
+            
+            # Общая статистика
+            total_warmings += domain_warmings
+            total_requests += domain_requests
+            total_success += domain_success
+            total_errors += domain_errors
+            if domain_avg_times:
+                avg_times.extend(domain_avg_times)
         
         overall_avg_time = sum(avg_times) / len(avg_times) if avg_times else 0
         success_rate = (total_success / total_requests * 100) if total_requests > 0 else 0
@@ -58,30 +107,35 @@ class ReportGenerator:
             f"📊 <b>Ежедневный отчет для администраторов</b>\n"
             f"📅 {datetime.now().strftime('%d.%m.%Y')}\n\n"
             f"🌐 <b>Домены:</b> {total_domains}\n"
-            f"📄 <b>Всего страниц:</b> {total_urls}\n\n"
+            f"📄 <b>Страниц в обходе:</b> {total_urls}\n\n"
             f"🔥 <b>Прогревов за сутки:</b> {total_warmings}\n"
             f"📊 <b>Всего запросов:</b> {total_requests}\n"
             f"✅ <b>Успешных:</b> {total_success} ({success_rate:.1f}%)\n"
             f"❌ <b>Ошибок:</b> {total_errors}\n\n"
-            f"⏱ <b>Среднее время ответа:</b> {overall_avg_time:.2f}с"
+            f"⏱ <b>Среднее время ответа:</b> {overall_avg_time:.2f}с\n\n"
         )
         
-        # Домены с проблемами
-        problem_domains = []
-        for domain in domains:
-            history = await db_manager.get_warming_history_by_period(
-                domain.id, start_time, end_time
-            )
-            
-            if history:
-                latest = history[-1] if history else None
-                if latest and latest.avg_response_time > 3.0:  # Медленные домены
-                    problem_domains.append((domain.name, latest.avg_response_time))
-        
-        if problem_domains:
-            report += "\n\n⚠️ <b>Медленные домены:</b>\n"
-            for name, avg_time in problem_domains[:5]:
-                report += f"• {name}: {avg_time:.2f}с\n"
+        # Добавляем детальную информацию по каждому домену
+        if domain_stats:
+            report += "📋 <b>Статистика по доменам:</b>\n\n"
+            for stat in domain_stats:
+                # Определяем эмодзи статуса
+                if stat['avg_time'] == 0:
+                    status = "🔵"
+                elif stat['avg_time'] < 2.0:
+                    status = "✅"
+                elif stat['avg_time'] < 4.0:
+                    status = "⚠️"
+                else:
+                    status = "❌"
+                
+                # Компактный формат в одну строку
+                report += (
+                    f"{status} <b>{stat['name']}</b>\n"
+                    f"   {stat['avg_time']:.2f}с • {stat['url_count']} стр • "
+                    f"{stat['warmings']} прогр • {stat['requests']} запр • "
+                    f"✅{stat['success']} • ❌{stat['errors']}\n\n"
+                )
         
         return report
     
@@ -100,12 +154,31 @@ class ReportGenerator:
         end_time = datetime.utcnow()
         start_time = end_time - timedelta(days=1)
         
-        total_urls = sum(len(domain.urls) for domain in domains)
+        # Получаем все активные задачи для определения количества URL в прогреве
+        active_jobs = await db_manager.get_active_jobs()
+        job_map = {job.domain_id: job for job in active_jobs}
+        
+        total_urls = 0  # Будем считать реально прогреваемые URL
         
         # Статистика по каждому домену
         domain_stats = []
         
         for domain in domains:
+            # Получаем Job для домена чтобы узнать active_url_group
+            job = job_map.get(domain.id)
+            
+            # Определяем реальное количество URL в прогреве
+            all_urls = [url.url for url in domain.urls]
+            if job and job.active_url_group:
+                # Фильтруем URL по группе
+                warming_urls = url_grouper.filter_urls_by_group(all_urls, domain.name, job.active_url_group)
+                url_count = len(warming_urls)
+            else:
+                # Если нет Job - значит все URL
+                url_count = len(all_urls)
+            
+            total_urls += url_count
+            
             history = await db_manager.get_warming_history_by_period(
                 domain.id, start_time, end_time
             )
@@ -120,7 +193,7 @@ class ReportGenerator:
                 
                 domain_stats.append({
                     'name': domain.name,
-                    'urls': len(domain.urls),
+                    'urls': url_count,  # Реальное количество в прогреве
                     'avg_time': avg_time,
                     'success_rate': success_rate,
                     'checks': len(history)
@@ -128,7 +201,7 @@ class ReportGenerator:
             else:
                 domain_stats.append({
                     'name': domain.name,
-                    'urls': len(domain.urls),
+                    'urls': url_count,  # Реальное количество в прогреве
                     'avg_time': 0,
                     'success_rate': 0,
                     'checks': 0
@@ -139,7 +212,7 @@ class ReportGenerator:
             f"📊 <b>Утренний отчет по вашим сайтам</b>\n"
             f"📅 {datetime.now().strftime('%d.%m.%Y')}\n\n"
             f"🌐 <b>Доменов в мониторинге:</b> {len(domains)}\n"
-            f"📄 <b>Всего страниц:</b> {total_urls}\n\n"
+            f"📄 <b>Страниц в обходе:</b> {total_urls}\n\n"
         )
         
         for stat in domain_stats:
@@ -160,7 +233,7 @@ class ReportGenerator:
             report += (
                 f"{status_emoji} <b>{stat['name']}</b>\n"
                 f"   Статус: {status_text}\n"
-                f"   📄 Страниц: {stat['urls']}\n"
+                f"   📄 Страниц в обходе: {stat['urls']}\n"
                 f"   ⏱ Среднее время загрузки: {stat['avg_time']:.2f}с\n"
                 f"   ✅ Доступность: {stat['success_rate']:.1f}%\n\n"
             )

@@ -55,6 +55,7 @@ class SiteHeaterApp:
             default_commands = [
                 BotCommand(command="start", description="🚀 Запустить бота"),
                 BotCommand(command="domains", description="🌐 Мои сайты"),
+                BotCommand(command="status", description="📊 Статус прогревов"),
                 BotCommand(command="help", description="❓ Справка"),
             ]
             

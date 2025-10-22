@@ -302,25 +302,21 @@ async def callback_set_schedule(callback: CallbackQuery):
         # Создаем задачу в базе с выбранной группой
         job = await db_manager.create_job(domain_id, schedule, active=True, active_url_group=group)
         
-        # Добавляем в планировщик
-        success = warming_scheduler.add_job(domain_id, job.id, schedule)
+        # Перезагружаем очередь прогревов для оптимального распределения
+        await warming_scheduler.reload_jobs()
+        logger.info(f"Scheduler reloaded after setting schedule for domain {domain_id}")
         
-        if success:
-            group_desc = url_grouper.get_group_description(group)
-            
-            await callback.message.edit_text(
-                f"✅ <b>Расписание установлено!</b>\n\n"
-                f"🌐 Домен: <b>{domain.name}</b>\n"
-                f"📊 Группа: {group_desc}\n"
-                f"⏰ Частота: <b>{schedule}</b>\n\n"
-                f"Прогрев будет выполняться автоматически.",
-                parse_mode="HTML",
-                reply_markup=get_domain_actions_keyboard(domain_id, has_active_job=True)
-            )
-        else:
-            await callback.message.edit_text(
-                f"❌ Ошибка при настройке расписания."
-            )
+        group_desc = url_grouper.get_group_description(group)
+        
+        await callback.message.edit_text(
+            f"✅ <b>Расписание установлено!</b>\n\n"
+            f"🌐 Домен: <b>{domain.name}</b>\n"
+            f"📊 Группа: {group_desc}\n"
+            f"⏰ Частота: <b>{schedule}</b>\n\n"
+            f"Прогрев будет выполняться автоматически.",
+            parse_mode="HTML",
+            reply_markup=get_domain_actions_keyboard(domain_id, has_active_job=True)
+        )
         
     except Exception as e:
         logger.error(f"Error setting schedule for domain {domain_id}: {e}", exc_info=True)
