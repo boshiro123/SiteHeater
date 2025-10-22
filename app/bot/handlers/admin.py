@@ -378,8 +378,8 @@ async def cmd_restore_backup(message: Message, state: FSMContext):
         from pathlib import Path
         import os
         
-        # Получаем список бэкапов
-        backup_dir = Path("./backups")
+        # Получаем список бэкапов (используем абсолютный путь)
+        backup_dir = Path("/app/backups")
         
         if not backup_dir.exists():
             await message.answer(

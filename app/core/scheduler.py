@@ -515,9 +515,9 @@ class WarmingScheduler:
             import subprocess
             from pathlib import Path
             
-            # Создаем директорию для бэкапов если нет
-            backup_dir = Path("./backups")
-            backup_dir.mkdir(exist_ok=True)
+            # Используем абсолютный путь для директории бэкапов
+            backup_dir = Path("/app/backups")
+            backup_dir.mkdir(exist_ok=True, parents=True)
             
             # Формируем имя файла бэкапа
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")

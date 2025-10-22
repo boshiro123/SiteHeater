@@ -77,6 +77,9 @@ services:
 
     # БЕЗОПАСНОСТЬ: НЕТ монтирования кода!
     # volumes: НЕТ! Код упакован в образ при сборке
+    volumes:
+      # Директория для бэкапов (нужна для записи)
+      - ./backups:/app/backups
 
     # ВАЖНО: Read-only filesystem для защиты
     read_only: true
