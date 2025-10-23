@@ -3,6 +3,7 @@
 """
 import asyncio
 import logging
+import os
 import random
 from typing import Dict, Optional, TYPE_CHECKING
 from datetime import datetime
@@ -521,33 +522,44 @@ class WarmingScheduler:
             
             # Формируем имя файла бэкапа
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            backup_filename = f"siteheater_backup_{timestamp}.sql.gz.enc"
-            backup_path = backup_dir / backup_filename
             
-            # Выполняем бэкап через docker
+            # Выполняем бэкап напрямую к PostgreSQL (без docker exec)
+            import gzip
+            
+            # Используем pg_dump через сетевое подключение
+            env = {
+                'PGPASSWORD': config.POSTGRES_PASSWORD
+            }
+            
             result = subprocess.run(
                 [
-                    "docker", "exec", "siteheater_postgres",
-                    "pg_dump", "-U", config.POSTGRES_USER, "-d", config.POSTGRES_DB
+                    "pg_dump",
+                    "-h", "postgres",  # имя сервиса в docker-compose
+                    "-U", config.POSTGRES_USER,
+                    "-d", config.POSTGRES_DB,
+                    "-F", "p"  # plain text format
                 ],
                 capture_output=True,
                 text=True,
-                timeout=300  # 5 минут
+                timeout=300,  # 5 минут
+                env={**os.environ, **env}
             )
             
             if result.returncode != 0:
                 raise Exception(f"pg_dump failed: {result.stderr}")
             
-            # Сжимаем и шифруем бэкап
-            import gzip
-            
-            # Сначала сжимаем
-            compressed_path = backup_dir / f"siteheater_backup_{timestamp}.sql.gz"
-            with gzip.open(compressed_path, 'wb') as f:
-                f.write(result.stdout.encode('utf-8'))
-            
-            # Затем шифруем (если задан пароль)
+            # Сжимаем бэкап
             if config.BACKUP_ENCRYPTION_PASSWORD:
+                # С шифрованием
+                compressed_path = backup_dir / f"siteheater_backup_{timestamp}.sql.gz"
+                backup_filename = f"siteheater_backup_{timestamp}.sql.gz.enc"
+                backup_path = backup_dir / backup_filename
+                
+                # Сначала сжимаем
+                with gzip.open(compressed_path, 'wb') as f:
+                    f.write(result.stdout.encode('utf-8'))
+                
+                # Затем шифруем
                 subprocess.run(
                     [
                         "openssl", "enc", "-aes-256-cbc",
@@ -562,9 +574,12 @@ class WarmingScheduler:
                 # Удаляем несжатый файл
                 compressed_path.unlink()
             else:
-                # Если нет шифрования, переименовываем
-                backup_path = compressed_path
-                backup_filename = backup_path.name
+                # Без шифрования - просто сжимаем
+                backup_filename = f"siteheater_backup_{timestamp}.sql.gz"
+                backup_path = backup_dir / backup_filename
+                
+                with gzip.open(backup_path, 'wb') as f:
+                    f.write(result.stdout.encode('utf-8'))
             
             # Получаем размер файла
             size_mb = backup_path.stat().st_size / (1024 * 1024)
