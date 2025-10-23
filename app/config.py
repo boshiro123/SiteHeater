@@ -20,6 +20,14 @@ class Config:
         "postgresql+asyncpg://siteheater:siteheater_password@localhost:5432/siteheater"
     )
     
+    # PostgreSQL credentials (для бэкапов)
+    POSTGRES_USER: str = os.getenv("POSTGRES_USER", "siteheater")
+    POSTGRES_PASSWORD: str = os.getenv("POSTGRES_PASSWORD", "siteheater_password")
+    POSTGRES_DB: str = os.getenv("POSTGRES_DB", "siteheater")
+    
+    # Backup settings
+    BACKUP_ENCRYPTION_PASSWORD: Optional[str] = os.getenv("BACKUP_ENCRYPTION_PASSWORD", None)
+    
     # Warmer settings
     WARMER_CONCURRENCY: int = int(os.getenv("WARMER_CONCURRENCY", "5"))
     WARMER_MIN_DELAY: float = float(os.getenv("WARMER_MIN_DELAY", "0.5"))
