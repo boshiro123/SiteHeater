@@ -125,6 +125,22 @@ async def callback_domain_info(callback: CallbackQuery):
     has_active_job = any(job.active for job in domain.jobs)
     
     status_text = "🟢 Активен" if domain.is_active else "🔴 Неактивен"
+    
+    # Получаем активную задачу для определения группы URL
+    active_job = next((job for job in domain.jobs if job.active), None) if has_active_job else None
+    
+    # Подсчитываем количество URL в работе (для активной группы)
+    all_urls = [url.url for url in domain.urls]
+    if active_job and active_job.active_url_group:
+        # Фильтруем URL по активной группе
+        from app.utils.url_grouper import url_grouper
+        working_urls = url_grouper.filter_urls_by_group(all_urls, domain.name, active_job.active_url_group)
+        urls_in_work = len(working_urls)
+    else:
+        # Если нет активной задачи - показываем все URL
+        urls_in_work = len(all_urls)
+    
+    # Общее количество URL (для админов)
     urls_count = len(domain.urls)
     
     # Информация о клиенте (для админов)
@@ -137,29 +153,26 @@ async def callback_domain_info(callback: CallbackQuery):
             if client.phone:
                 client_info += f"\n📱 Телефон: {client.phone}"
     
-    # Информация о расписании и группе URL
+    # Информация о расписании и группе URL (для админов)
     job_info = ""
-    if has_active_job:
-        active_job = next((job for job in domain.jobs if job.active), None)
-        if active_job:
-            # Группа URL
-            group_names = {1: "Только главная", 2: "Основные страницы", 3: "Все страницы"}
-            group_name = group_names.get(active_job.active_url_group, "Не указано")
-            
-            job_info = f"\n⏰ Автопрогрев: <b>каждые {active_job.schedule}</b>"
-            job_info += f"\n📋 Группа URL: <b>{group_name}</b>"
-            
-            if active_job.last_run:
-                job_info += f"\n🕒 Последний прогрев: {active_job.last_run.strftime('%Y-%m-%d %H:%M')}"
+    if has_active_job and active_job:
+        # Группа URL
+        group_names = {1: "Только главная", 2: "Основные страницы", 3: "Все страницы"}
+        group_name = group_names.get(active_job.active_url_group, "Не указано")
+        
+        job_info = f"\n⏰ Автопрогрев: <b>каждые {active_job.schedule}</b>"
+        job_info += f"\n📋 Группа URL: <b>{group_name}</b>"
+        
+        if active_job.last_run:
+            job_info += f"\n🕒 Последний прогрев: {active_job.last_run.strftime('%Y-%m-%d %H:%M')}"
     
     # Для клиентов - упрощенный вид без упоминания "прогрева"
     if user.role == "client":
         text = (
             f"🌐 <b>{domain.name}</b>\n\n"
             f"Статус: {status_text}\n"
-            f"📊 Страниц: <b>{urls_count}</b>\n"
-            f"📅 Добавлен: {domain.created_at.strftime('%Y-%m-%d %H:%M')}"
-            f"{job_info}\n\n"
+            f"📊 Страниц в работе: <b>{urls_in_work}</b>\n"
+            f"📅 Добавлен: {domain.created_at.strftime('%Y-%m-%d %H:%M')}\n\n"
             f"Каждое утро в 9:00 вы получаете отчет о работе сайта."
         )
         keyboard = None  # Только кнопка "Назад"

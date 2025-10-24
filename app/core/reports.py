@@ -107,7 +107,7 @@ class ReportGenerator:
             f"📊 <b>Ежедневный отчет для администраторов</b>\n"
             f"📅 {datetime.now().strftime('%d.%m.%Y')}\n\n"
             f"🌐 <b>Домены:</b> {total_domains}\n"
-            f"📄 <b>Страниц в обходе:</b> {total_urls}\n\n"
+            f"📄 <b>Страниц в работе:</b> {total_urls}\n\n"
             f"🔥 <b>Прогревов за сутки:</b> {total_warmings}\n"
             f"📊 <b>Всего запросов:</b> {total_requests}\n"
             f"✅ <b>Успешных:</b> {total_success} ({success_rate:.1f}%)\n"
@@ -212,7 +212,7 @@ class ReportGenerator:
             f"📊 <b>Утренний отчет по вашим сайтам</b>\n"
             f"📅 {datetime.now().strftime('%d.%m.%Y')}\n\n"
             f"🌐 <b>Доменов в мониторинге:</b> {len(domains)}\n"
-            f"📄 <b>Страниц в обходе:</b> {total_urls}\n\n"
+            f"📄 <b>Страниц в работе:</b> {total_urls}\n\n"
         )
         
         for stat in domain_stats:
@@ -233,7 +233,7 @@ class ReportGenerator:
             report += (
                 f"{status_emoji} <b>{stat['name']}</b>\n"
                 f"   Статус: {status_text}\n"
-                f"   📄 Страниц в обходе: {stat['urls']}\n"
+                f"   📄 Страниц в работе: {stat['urls']}\n"
                 f"   ⏱ Среднее время загрузки: {stat['avg_time']:.2f}с\n"
                 f"   ✅ Доступность: {stat['success_rate']:.1f}%\n\n"
             )
@@ -292,6 +292,100 @@ class ReportGenerator:
             
         except Exception as e:
             logger.error(f"Error sending error notification: {e}", exc_info=True)
+    
+    async def generate_hourly_admin_report(self) -> str:
+        """Генерация 2-часового отчета для администраторов"""
+        # Период за последние 2 часа
+        end_time = datetime.utcnow()
+        start_time = end_time - timedelta(hours=2)
+        
+        # Получаем все домены
+        domains = await db_manager.get_all_domains()
+        
+        if not domains:
+            return (
+                "📊 <b>2-часовой отчет</b>\n"
+                f"🕐 {start_time.strftime('%H:%M')} - {end_time.strftime('%H:%M')}\n\n"
+                "Нет доменов для мониторинга."
+            )
+        
+        total_requests = 0
+        total_warmings = 0
+        total_success = 0
+        total_errors = 0
+        
+        # Статистика по каждому домену
+        domain_stats = []
+        
+        for domain in domains:
+            history = await db_manager.get_warming_history_by_period(
+                domain.id, start_time, end_time
+            )
+            
+            if history:
+                domain_warmings = len(history)
+                domain_requests = sum(h.total_requests for h in history)
+                domain_success = sum(h.successful_requests for h in history)
+                domain_errors = sum(h.failed_requests + h.timeout_requests for h in history)
+                
+                total_warmings += domain_warmings
+                total_requests += domain_requests
+                total_success += domain_success
+                total_errors += domain_errors
+                
+                domain_stats.append({
+                    'name': domain.name,
+                    'warmings': domain_warmings,
+                    'requests': domain_requests,
+                    'success': domain_success,
+                    'errors': domain_errors
+                })
+        
+        # Вычисляем среднее количество запросов в минуту
+        total_minutes = 120  # 2 часа = 120 минут
+        avg_requests_per_minute = total_requests / total_minutes if total_requests > 0 else 0
+        success_rate = (total_success / total_requests * 100) if total_requests > 0 else 0
+        
+        report = (
+            f"📊 <b>2-часовой отчет</b>\n"
+            f"🕐 {start_time.strftime('%H:%M')} - {end_time.strftime('%H:%M')}\n\n"
+            f"🔥 <b>Прогревов:</b> {total_warmings}\n"
+            f"📊 <b>Всего запросов:</b> {total_requests}\n"
+            f"⚡️ <b>Среднее запросов/мин:</b> {avg_requests_per_minute:.2f}\n"
+            f"✅ <b>Успешных:</b> {total_success} ({success_rate:.1f}%)\n"
+            f"❌ <b>Ошибок:</b> {total_errors}\n"
+        )
+        
+        # Добавляем детали по доменам, если были прогревы
+        if domain_stats:
+            report += "\n📋 <b>Детали:</b>\n"
+            for stat in domain_stats:
+                report += (
+                    f"• <b>{stat['name']}</b>: "
+                    f"{stat['warmings']} прогр, "
+                    f"{stat['requests']} запр, "
+                    f"✅{stat['success']} ❌{stat['errors']}\n"
+                )
+        
+        return report
+    
+    async def send_hourly_admin_reports(self, bot):
+        """Отправка 2-часовых отчетов администраторам"""
+        try:
+            admins = await db_manager.get_all_admins()
+            report = await self.generate_hourly_admin_report()
+            
+            for admin in admins:
+                try:
+                    await bot.send_message(admin.id, report, parse_mode="HTML")
+                    logger.info(f"Sent 2-hour report to admin {admin.id}")
+                except Exception as e:
+                    logger.error(f"Failed to send 2-hour report to admin {admin.id}: {e}")
+            
+            logger.info("2-hour admin reports sent successfully")
+            
+        except Exception as e:
+            logger.error(f"Error sending 2-hour admin reports: {e}", exc_info=True)
 
 
 # Глобальный экземпляр

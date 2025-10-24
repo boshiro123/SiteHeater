@@ -70,7 +70,16 @@ class WarmingScheduler:
             replace_existing=True
         )
         
-        logger.info("Scheduler started with daily reports at 06:00 UTC, URL updates at 03:00 UTC, and hourly backups")
+        # Добавляем задачу для 2-часовых отчетов админам
+        self.scheduler.add_job(
+            self.send_hourly_reports_task,
+            trigger='interval',
+            hours=2,
+            id='hourly_admin_reports',
+            replace_existing=True
+        )
+        
+        logger.info("Scheduler started with daily reports at 06:00 UTC, URL updates at 03:00 UTC, hourly backups, and 2-hour admin reports")
 
     
     def shutdown(self) -> None:
@@ -404,6 +413,15 @@ class WarmingScheduler:
         
         logger.info("Sending daily reports...")
         await report_generator.send_daily_reports(self.bot)
+    
+    async def send_hourly_reports_task(self) -> None:
+        """Задача для отправки 2-часовых отчетов администраторам"""
+        if not self.bot:
+            logger.warning("Bot instance not set, skipping 2-hour reports")
+            return
+        
+        logger.info("Sending 2-hour admin reports...")
+        await report_generator.send_hourly_admin_reports(self.bot)
     
     async def update_domains_urls_task(self) -> None:
         """Задача для автоматического обновления URL всех доменов"""
