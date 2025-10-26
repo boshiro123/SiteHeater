@@ -103,6 +103,10 @@ class ReportGenerator:
         overall_avg_time = sum(avg_times) / len(avg_times) if avg_times else 0
         success_rate = (total_success / total_requests * 100) if total_requests > 0 else 0
         
+        # Вычисляем среднее количество запросов в минуту за сутки
+        total_minutes = 1440  # 24 часа = 1440 минут
+        avg_requests_per_minute = total_requests / total_minutes if total_requests > 0 else 0
+        
         report = (
             f"📊 <b>Ежедневный отчет для администраторов</b>\n"
             f"📅 {datetime.now().strftime('%d.%m.%Y')}\n\n"
@@ -110,6 +114,7 @@ class ReportGenerator:
             f"📄 <b>Страниц в работе:</b> {total_urls}\n\n"
             f"🔥 <b>Прогревов за сутки:</b> {total_warmings}\n"
             f"📊 <b>Всего запросов:</b> {total_requests}\n"
+            f"⚡️ <b>Среднее запросов/мин:</b> {avg_requests_per_minute:.2f}\n"
             f"✅ <b>Успешных:</b> {total_success} ({success_rate:.1f}%)\n"
             f"❌ <b>Ошибок:</b> {total_errors}\n\n"
             f"⏱ <b>Среднее время ответа:</b> {overall_avg_time:.2f}с\n\n"
@@ -232,7 +237,6 @@ class ReportGenerator:
             
             report += (
                 f"{status_emoji} <b>{stat['name']}</b>\n"
-                f"   Статус: {status_text}\n"
                 f"   📄 Страниц в работе: {stat['urls']}\n"
                 f"   ⏱ Среднее время загрузки: {stat['avg_time']:.2f}с\n"
                 f"   ✅ Доступность: {stat['success_rate']:.1f}%\n\n"

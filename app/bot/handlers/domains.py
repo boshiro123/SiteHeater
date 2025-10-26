@@ -170,7 +170,6 @@ async def callback_domain_info(callback: CallbackQuery):
     if user.role == "client":
         text = (
             f"🌐 <b>{domain.name}</b>\n\n"
-            f"Статус: {status_text}\n"
             f"📊 Страниц в работе: <b>{urls_in_work}</b>\n"
             f"📅 Добавлен: {domain.created_at.strftime('%Y-%m-%d %H:%M')}\n\n"
             f"Каждое утро в 9:00 вы получаете отчет о работе сайта."
